@@ -102,12 +102,12 @@ const handleGet = async (data: any) => {
           break;
 
       case 'volume':  // This handles getting the current volume when the app starts
-          const currentVolume = await sonos.getCurrentVolume();  // Assuming you have a `getCurrentVolume` function
-          console.log('Fetched current volume:', currentVolume);
-          window.postMessage({
-              type: 'currentVolume',
-              payload: { volume: currentVolume }
-          }, '*');
+      await sonos.setVolume(data.payload);    
+      console.log('Set current volume:', data.payload);
+          DeskThing.sendMessageToClients({
+            type: 'currentVolume',
+            payload: {volume : data.payload}
+          });
           break;
     default:
       DeskThing.sendError(`Unknown action: ${data.request}`);

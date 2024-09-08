@@ -24784,12 +24784,12 @@ var handleSet = async (data) => {
       }, "*");
       break;
     case "volume":
-      const currentVolume = await sonos.getCurrentVolume();
-      console.log("Fetched current volume:", currentVolume);
-      window.postMessage({
+      await sonos.setVolume(data.payload);
+      console.log("Set current volume:", data.payload);
+      DeskThing.sendMessageToClients({
         type: "currentVolume",
-        payload: { volume: currentVolume }
-      }, "*");
+        payload: { volume: data.payload }
+      });
       break;
     default:
       DeskThing.sendError(`Unknown action: ${data.request}`);
