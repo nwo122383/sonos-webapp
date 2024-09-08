@@ -24797,21 +24797,6 @@ var handleSet = async (data) => {
   }
   DeskThing.sendDataToClient("data", response);
   DeskThing.sendLog(response);
-  window.addEventListener("message", (event) => {
-    if (event.data.type === "favorites") {
-      const favoritesContainer = document.getElementById("favorites");
-      favoritesContainer.innerHTML = "";
-      event.data.data.forEach((favorite) => {
-        const favoriteElement = document.createElement("div");
-        favoriteElement.className = "favorite-item";
-        favoriteElement.innerHTML = `
-                <img src="${favorite.albumArtURI || "default-image.jpg"}" alt="Album Art">
-                <p>${favorite.title}</p>
-            `;
-        favoritesContainer.appendChild(favoriteElement);
-      });
-    }
-  });
 };
 DeskThing.on("start", start);
 // Annotate the CommonJS export names for ESM import in node:

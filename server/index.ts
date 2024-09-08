@@ -116,23 +116,7 @@ const handleGet = async (data: any) => {
 
   DeskThing.sendDataToClient('data', response);
   DeskThing.sendLog(response);
-  window.addEventListener('message', (event) => {
-    if (event.data.type === 'favorites') {
-        const favoritesContainer = document.getElementById('favorites');
-        favoritesContainer.innerHTML = ''; // Clear existing favorites
-        event.data.data.forEach(favorite => {
-            const favoriteElement = document.createElement('div');
-            favoriteElement.className = 'favorite-item';
-            favoriteElement.innerHTML = `
-                <img src="${favorite.albumArtURI || 'default-image.jpg'}" alt="Album Art">
-                <p>${favorite.title}</p>
-            `;
-            // Other event handling code
-            favoritesContainer.appendChild(favoriteElement);
-        });
-    }
-});
-
+  
 };
 
 DeskThing.on('start', start);
