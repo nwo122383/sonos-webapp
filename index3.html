@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sonos WebApp</title>
+    <style>
+        body {
+            background-color: #333;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start; /* Allow content to start from the top */
+            height: 100vh;
+            overflow-y: scroll; /* Enable vertical scrolling */
+            margin: 0;
+        }
+
+        #favorites-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            grid-gap: 10px;
+            width: 90%;
+            margin-top: 20px;
+        }
+
+        .favorite-item {
+            background-color: #444;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 8px;
+        }
+
+        .favorite-item img {
+            max-width: 100%;
+            max-height: 100px;
+            display: block;
+            margin: 0 auto 10px;
+        }
+
+        .track-info {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .track-info img {
+            max-width: 100px;
+            max-height: 100px;
+            display: block;
+            margin: 0 auto 10px;
+        }
+
+        .track-info div {
+            margin: 5px 0;
+        }
+
+        #volume-bar {
+            position: fixed;
+            bottom: 60px;
+            right: 20px;
+            width: 30px;
+            height: 200px;
+            background-color: #555;
+            border: 2px solid #fff;
+            display: none; /* Initially hidden */
+            flex-direction: column-reverse;
+        }
+
+        #volume-fill {
+            background-color: #0f0;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="favorites-container"></div>
+
+    
+    <div id="volume-bar">
+        <div id="volume-fill"></div>
+    </div>
+
+    <script>
+        // Handle volume bar visibility and control
+        let volumeBarTimeout;
+
+        function showVolumeBar() {
+            const volumeBar = document.getElementById('volume-bar');
+            volumeBar.style.display = 'flex';
+
+            if (volumeBarTimeout) {
+                clearTimeout(volumeBarTimeout);
+            }
+
+            volumeBarTimeout = setTimeout(() => {
+                volumeBar.style.display = 'none';
+            }, 2000);
+        }
+
+        window.addEventListener('wheel', (event) => {
+            if (event.deltaX !== 0) {
+                const volumeChange = event.deltaX > 0 ? 1 : -1;
+                window.parent.postMessage({
+                    type: 'IFRAME_ACTION',
+                    payload: {
+                        app: 'sonos-webapp',
+                        type: 'set',
+                        request: 'volumeChange',
+                        data: volumeChange
+                    }
+                }, '*');
+
+                showVolumeBar();
+            }
+        });
+
+        // Handle messages from Sonos WebApp
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'favorites') {
+                const favorites = event.data.data;
+                const favoritesContainer = document.getElementById('favorites-container');
+                favoritesContainer.innerHTML = ''; // Clear previous content
+
+                favorites.forEach(favorite => {
+                    const favoriteElement = document.createElement('div');
+                    favoriteElement.classList.add('favorite-item');
+
+                    const image = document.createElement('img');
+                    image.src = favorite.albumArtURI || 'default-image.jpg';
+                    favoriteElement.appendChild(image);
+
+                    const title = document.createElement('div');
+                    title.innerText = favorite.title;
+                    favoriteElement.appendChild(title);
+
+                    favoriteElement.addEventListener('click', () => {
+                        const payload = {
+                            app: 'sonos-webapp',
+                            type: 'set',
+                            request: 'playFavorite',
+                            data: favorite.uri
+                        };
+                        window.parent.postMessage({ type: 'IFRAME_ACTION', payload: payload }, '*');
+                    });
+
+                    favoritesContainer.appendChild(favoriteElement);
+                });
+            } else if (event.data.type === 'song') {
+                const songData = event.data.data;
+                document.getElementById('track-name').textContent = 'Track: ' + songData.track_name;
+                document.getElementById('artist-name').textContent = 'Artist: ' + songData.artist;
+                document.getElementById('album-name').textContent = 'Album: ' + songData.album;
+                document.getElementById('album-art').src = songData.thumbnail || 'default-image.jpg';
+            } else if (event.data.type === 'volume') {
+                const volume = event.data.data;
+                const volumeFill = document.getElementById('volume-fill');
+                volumeFill.style.height = `${volume}%`;
+            }
+        });
+
+        // Request the favorites to be displayed on page load
+        window.onload = function() {
+            window.parent.postMessage({
+                type: 'IFRAME_ACTION',
+                payload: {
+                    app: 'sonos-webapp',
+                    type: 'get',
+                    request: 'favorites'
+                }
+            }, '*');
+        };
+    </script>
+</body>
+</html>

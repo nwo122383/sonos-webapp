@@ -1,0 +1,19 @@
+{
+  "id": "sonos-webapp",
+  "isAudioSource": true,
+  "isScreenSaver": false,
+  "isWebApp": true,
+  "isLocalApp": false,
+  "requires": [
+    "utility"
+  ],
+  "label": "Sonos",
+  "version": "0.8.7",
+  "description": "an app to play sonos on DeskThing",
+  "author": "nWo122383 and chatGPT",
+  "platforms": [
+    "windows"
+  ],
+  "homepage": "",
+  "repository": ""
+}
