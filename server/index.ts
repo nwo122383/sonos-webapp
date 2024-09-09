@@ -83,6 +83,12 @@ const handleGet = async (data: any) => {
     case 'pause':
       await sonos.pause();
       break;     
+      case 'getTrackInfo':  // Handle polling for track information
+    await sonos.getTrackInfo();
+    break;
+    case 'stopPolling':
+      sonos.stopPollingTrackInfo();
+      break;
     case 'playFavorite':
           if (data.payload && data.payload.uri) {
             console.log('Playing favorite with URI:', data.payload.uri);  // Log the URI

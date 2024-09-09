@@ -1,3 +1,4 @@
+
 import axios from 'axios';
 import xml2js from 'xml2js';
 import { DeskThing as DK, Settings } from 'deskthing-server';
@@ -104,6 +105,7 @@ class MusicService {
         this.type = MusicService.URI_TYPE[type];
         this.encodedUri = encodeURIComponent(uri);
         this.broadcastId = broadcastId;
+        
     }
 
     get metadata() {
@@ -114,7 +116,7 @@ class MusicService {
             </item>
         </DIDL-Lite>`;
     }
-
+   
     get uri() {
         return this.type.prefix + this.encodedUri + (this.broadcastId ? `?sid=${this.broadcastId}` : '');
     }
@@ -177,9 +179,9 @@ try {
     
     
 
-    constructor() {
+    
         // Initialize DeskThing
-    }
+    
 
     async sendLog(message: string) {
         DK.getInstance().sendLog(message);
@@ -209,7 +211,7 @@ try {
 
         this.sendLog(`Sending SOAP Request to ${url} with action ${action}`);
         this.sendLog(`SOAP Request Content: ${request}`);
-
+        
         try {
             const response = await axios({
                 method: 'POST',
@@ -568,7 +570,7 @@ try {
     
             // Add the URI to the queue
             const addToQueueAction = "AddURIToQueue";
-            const params = {
+            let params = {
                 InstanceID: 0,
                 EnqueuedURI: uri,
                 EnqueuedURIMetaData: this.generateMetaData(uri), // Ensure metadata is generated
@@ -580,7 +582,9 @@ try {
     
             // Play the track
             await this.play();
-    
+            this.startTrackPositionUpdates();
+            this.startPollingTrackInfo();
+
             this.sendLog(`Playing favorite with URI: ${uri}`);
         } catch (error) {
             this.sendError('Error playing favorite: ' + error.message);
@@ -782,7 +786,7 @@ try {
         if (this.trackPositionInterval) {
             clearInterval(this.trackPositionInterval);
         }
-        this.trackPositionInterval = setInterval(() => this.getTrackPosition(), 1000);
+        this.trackPositionInterval = setInterval(() => this.getTrackPosition(), 50000);
     }
 
     stopTrackPositionUpdates() {
@@ -792,7 +796,7 @@ try {
         }
     }
 
-    async play() {
+    async play(){
         await this.execute('Play', { Speed: 1 });
         this.startPollingTrackInfo();
         this.startTrackPositionUpdates();

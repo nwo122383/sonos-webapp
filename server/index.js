@@ -24116,7 +24116,9 @@ var SonosHandler = class {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
     }
+    console.log("Starting track info polling at interval:", interval);
     this.pollingInterval = setInterval(() => {
+      console.log("Polling track info...");
       this.getTrackInfo();
     }, interval);
   }
@@ -24669,14 +24671,8 @@ var SonosHandler = class {
     }
   }
   async play() {
-    await this.execute("Play", { Speed: 1 });
-    this.startPollingTrackInfo();
-    this.startTrackPositionUpdates();
-  }
-  async pause() {
-    await this.execute("Pause");
-    this.stopPollingTrackInfo();
-    this.stopTrackPositionUpdates();
+    await this.play();
+    console.log("Already playing, ignoring play request");
   }
   async next() {
     await this.execute("Next");

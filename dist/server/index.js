@@ -24144,8 +24144,7 @@ var SonosHandler = class {
   setDeviceIP(ip) {
     this.deviceIP = ip;
   }
-  constructor() {
-  }
+  // Initialize DeskThing
   async sendLog(message) {
     import_deskthing_server.DeskThing.getInstance().sendLog(message);
   }
@@ -24466,7 +24465,7 @@ var SonosHandler = class {
     try {
       await this.clearQueue();
       const addToQueueAction = "AddURIToQueue";
-      const params = {
+      let params = {
         InstanceID: 0,
         EnqueuedURI: uri,
         EnqueuedURIMetaData: this.generateMetaData(uri),
@@ -24476,6 +24475,8 @@ var SonosHandler = class {
       };
       await this.execute(addToQueueAction, params);
       await this.play();
+      this.startTrackPositionUpdates();
+      this.startPollingTrackInfo();
       this.sendLog(`Playing favorite with URI: ${uri}`);
     } catch (error) {
       this.sendError("Error playing favorite: " + error.message);
@@ -24659,7 +24660,7 @@ var SonosHandler = class {
     if (this.trackPositionInterval) {
       clearInterval(this.trackPositionInterval);
     }
-    this.trackPositionInterval = setInterval(() => this.getTrackPosition(), 1e3);
+    this.trackPositionInterval = setInterval(() => this.getTrackPosition(), 5e4);
   }
   stopTrackPositionUpdates() {
     if (this.trackPositionInterval) {
@@ -24765,6 +24766,12 @@ var handleSet = async (data) => {
       break;
     case "pause":
       await sonos.pause();
+      break;
+    case "getTrackInfo":
+      await sonos.getTrackInfo();
+      break;
+    case "stopPolling":
+      sonos.stopPollingTrackInfo();
       break;
     case "playFavorite":
       if (data.payload && data.payload.uri) {
