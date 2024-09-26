@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { DeskThing as DK } from 'deskthing-server';
-import { getImageData } from './utility'; // Import getImageData from utility.ts
 import xml2js from 'xml2js';
 
 export type SongData = {
@@ -41,6 +40,9 @@ class SonosHandler {
   name = 'AVTransport';
   favoritesList: any[] = []; // Store favorites here
   deviceUUID: string | null = null; // Store the device UUID
+
+  // Store the last known track info
+  lastKnownSongData: any = null;
 
   // Method to execute the SOAP command
   async execute(action: string, params: any = {}) {
@@ -106,6 +108,22 @@ class SonosHandler {
       }[c]));
     }
     return input;
+  }
+
+  // Parse URI query parameters
+  parseUriQuery(uri: string): Record<string, string> {
+    const queryIndex = uri.indexOf('?');
+    if (queryIndex === -1) {
+      return {};
+    }
+    const queryString = uri.substring(queryIndex + 1);
+    const pairs = queryString.split('&');
+    const queryParams: Record<string, string> = {};
+    for (const pair of pairs) {
+      const [key, value] = pair.split('=');
+      queryParams[key] = decodeURIComponent(value || '');
+    }
+    return queryParams;
   }
 
   // Fetch and send favorites to the frontend
@@ -183,7 +201,7 @@ class SonosHandler {
         }
 
         // Fetch and encode the album art as base64
-        const encodedAlbumArtURI = formattedAlbumArtURI ? await getImageData(formattedAlbumArtURI) : null;
+        const encodedAlbumArtURI = formattedAlbumArtURI ? await this.getImageData(formattedAlbumArtURI) : null;
 
         return {
           title,
@@ -205,7 +223,7 @@ class SonosHandler {
     }
   }
 
-  // Updated playFavorite method
+  // Method to play a favorite
   async playFavorite(uri: string, metaData: string | null = null) {
     try {
       this.sendLog(`Attempting to play favorite URI: ${uri}`);
@@ -220,41 +238,20 @@ class SonosHandler {
         }
       }
 
-      // Ensure metadata is a string
-      if (typeof metaData !== 'string') {
-        throw new Error('Metadata is not a string');
-      }
-
-      // Parse metadata to extract upnp:class and check for <res> element
+      // Parse metadata to extract upnp:class
       const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
-      let parsedMetaData = await parser.parseStringPromise(metaData);
-      let item = parsedMetaData['DIDL-Lite']['item'];
+      const parsedMetaData = await parser.parseStringPromise(metaData);
+      const item = parsedMetaData['DIDL-Lite']['item'];
       const upnpClass = item['upnp:class'];
-      const resElement = item['res'];
 
       this.sendLog(`Using metadata with upnp:class: ${upnpClass}`);
 
-      // Check if the content is from Spotify
-      const isSpotifyContent = uri.includes('spotify');
-
-      if (isSpotifyContent) {
-        // Generate metadata if <res> element is missing
-        if (!resElement) {
-          this.sendLog('Metadata lacks <res> element, generating metadata for Spotify content.');
-          metaData = this.generateSpotifyMetaData(uri, item);
-          parsedMetaData = await parser.parseStringPromise(metaData);
-          item = parsedMetaData['DIDL-Lite']['item'];
-        }
-
-        // For Spotify playlists and albums, play directly using SetAVTransportURI
-        await this.setAVTransportURI(uri, metaData);
-        await this.play();
-        this.sendLog(`Playing Spotify favorite: ${item['dc:title']}`);
-      } else if (
-        upnpClass.includes('object.container.album.musicAlbum') ||
-        upnpClass.includes('object.container.playlistContainer')
+      // Decide how to handle based on upnpClass
+      if (
+        upnpClass.includes('object.container.playlistContainer') ||
+        upnpClass.includes('object.container.album.musicAlbum')
       ) {
-        // For other albums and playlists, add to queue
+        // For playlists and albums, add to queue
         await this.clearQueue();
         const response = await this.addURIToQueue(uri, metaData);
         const trackNr = response.FirstTrackNumberEnqueued || 1;
@@ -277,34 +274,13 @@ class SonosHandler {
         await this.play();
         this.sendLog(`Playing favorite: ${item['dc:title']}`);
       }
+
+      // Update track info immediately
+      await this.getTrackInfo();
+
     } catch (error: any) {
       this.sendError(`Error playing favorite: ${error.message}`);
     }
-  }
-
-  // Method to generate metadata for Spotify content
-  generateSpotifyMetaData(uri: string, item: any) {
-    const title = item['dc:title'] || 'Favorite';
-    const upnpClass = item['upnp:class'] || 'object.container.playlistContainer';
-    const itemId = item['$'] && item['$']['id'] ? item['$']['id'] : uri;
-    const parentId = item['$'] && item['$']['parentID'] ? item['$']['parentID'] : '0';
-    const cdudn = item['desc'] && item['desc']['_'] ? item['desc']['_'] : '';
-
-    const protocolInfo = 'x-rincon-cpcontainer:*:*:*';
-
-    return `
-      <DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/"
-                 xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"
-                 xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/">
-          <item id="${this.escape(itemId)}" parentID="${this.escape(parentId)}" restricted="true">
-              <dc:title>${this.escape(title)}</dc:title>
-              <upnp:class>${upnpClass}</upnp:class>
-              <res protocolInfo="${protocolInfo}">${this.escape(uri)}</res>
-              <desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">
-                  ${cdudn}
-              </desc>
-          </item>
-      </DIDL-Lite>`;
   }
 
   // Method to add URI to queue
@@ -378,7 +354,7 @@ class SonosHandler {
   // Method to play
   async play() {
     await this.execute('Play', { Speed: '1' });
-    this.startPollingTrackInfo();
+    this.startPollingTrackInfo(5000); // Poll every 5 seconds
   }
 
   // Method to pause
@@ -400,8 +376,8 @@ class SonosHandler {
   }
 
   // Method to start polling
-  startPollingTrackInfo(interval = 30000) {
-    // 30 seconds interval
+  startPollingTrackInfo(interval = 5000) {
+    // Default interval is 5 seconds
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval); // Clear any existing interval
     }
@@ -441,21 +417,65 @@ class SonosHandler {
       const trackData = result;
       const trackMetaData = trackData['TrackMetaData'];
 
-      let trackInfo = 'Unknown Track';
-      let album = 'Unknown Album';
+      this.sendLog(`Track MetaData: ${trackMetaData}`);
+
+      let trackInfo = null;
+      let album = null;
+      let artist = null;
       let albumArtURI = null;
 
       if (trackMetaData && trackMetaData.includes('<DIDL-Lite')) {
-        const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
+        const parser = new xml2js.Parser({
+          explicitArray: false,
+          ignoreAttrs: true,
+        });
         const metaResult = await parser.parseStringPromise(trackMetaData);
 
         const item = metaResult['DIDL-Lite'] && metaResult['DIDL-Lite']['item'];
-        albumArtURI = item && item['upnp:albumArtURI'] || null;
 
-        const artist = item && item['dc:creator'] || 'Unknown Artist';
-        const title = item && item['dc:title'] || 'Unknown Track';
-        album = item && item['upnp:album'] || 'Unknown Album';
-        trackInfo = `${artist} - ${title}`;
+        this.sendLog(`Parsed item: ${JSON.stringify(item)}`);
+        this.sendLog(`Available keys in item: ${Object.keys(item).join(', ')}`);
+
+        // Access elements with namespace prefixes
+        albumArtURI = item && (item['upnp:albumArtURI'] || item['albumArtURI']) || null;
+
+        let streamContent = item && (item['r:streamContent'] || item['streamContent']);
+
+        if (streamContent) {
+          // For radio streams and some services
+          this.sendLog(`streamContent: ${streamContent}`);
+
+          // Adjusted parsing logic to handle both '=' and space-separated key-value pairs
+          const data: { [key: string]: string } = {};
+
+          // Split by '|'
+          const pairs = streamContent.split('|');
+
+          for (const pair of pairs) {
+            const indexOfEquals = pair.indexOf('=');
+            if (indexOfEquals > -1) {
+              // Key and value are separated by '='
+              const key = pair.substring(0, indexOfEquals).trim().toUpperCase();
+              const value = pair.substring(indexOfEquals + 1).trim();
+              data[key] = value;
+            } else {
+              // Key and value are separated by first space
+              const [key, ...valueParts] = pair.trim().split(' ');
+              if (key && valueParts.length > 0) {
+                data[key.trim().toUpperCase()] = valueParts.join(' ').trim();
+              }
+            }
+          }
+
+          artist = data['ARTIST'] || data['ARTIST_NAME'] || null;
+          trackInfo = data['TITLE'] || data['TRACK'] || null;
+          album = data['ALBUM'] || null;
+
+        } else {
+          artist = item && (item['dc:creator'] || item['creator']) || null;
+          trackInfo = item && (item['dc:title'] || item['title']) || null;
+          album = item && (item['upnp:album'] || item['album']) || null;
+        }
 
         if (albumArtURI && (albumArtURI.startsWith('http://') || albumArtURI.startsWith('https://'))) {
           this.sendLog(`Album art URI: ${albumArtURI}`);
@@ -467,22 +487,32 @@ class SonosHandler {
         this.sendLog('Track metadata not found or not in expected format. Skipping update.');
       }
 
-      this.sendLog(`Fetched Track Info: ${trackInfo}, Album - ${album}, AlbumArtURI - ${albumArtURI}`);
+      // Only update if we have valid data
+      if (trackInfo || artist || album || albumArtURI) {
+        const songData = {
+          track_name: trackInfo || (this.lastKnownSongData && this.lastKnownSongData.track_name) || 'Unknown Track',
+          artist: artist || (this.lastKnownSongData && this.lastKnownSongData.artist) || 'Unknown Artist',
+          album: album || (this.lastKnownSongData && this.lastKnownSongData.album) || 'Unknown Album',
+          thumbnail: albumArtURI ? await this.getImageData(albumArtURI) : (this.lastKnownSongData && this.lastKnownSongData.thumbnail) || null,
+        };
 
-      const songData = {
-        track_name: trackInfo,
-        artist: '',
-        album: album,
-        thumbnail: albumArtURI ? await this.getImageData(albumArtURI) : null,
-      };
+        // Update last known song data
+        this.lastKnownSongData = songData;
 
-      DK.getInstance().sendDataToClient({ app: 'client', type: 'song', payload: songData });
-      DK.getInstance().sendDataToClient({ app: 'sonos-webapp', type: 'song', payload: songData });
+        this.sendLog(`Fetched Track Info: ${songData.artist} - ${songData.track_name}, Album - ${songData.album}, AlbumArtURI - ${albumArtURI}`);
+
+        DK.getInstance().sendDataToClient({ app: 'client', type: 'song', payload: songData });
+        DK.getInstance().sendDataToClient({ app: 'sonos-webapp', type: 'song', payload: songData });
+      } else {
+        this.sendLog('No valid track info received. Retaining last known track info.');
+      }
+
     } catch (error: any) {
       this.sendError('Error getting track info: ' + error.message);
       DK.getInstance().sendDataToClient({
+        app: 'client',
         type: 'song',
-        payload: {
+        payload: this.lastKnownSongData || {
           track_name: 'Unknown Track',
           artist: 'Unknown Artist',
           album: 'Unknown Album',

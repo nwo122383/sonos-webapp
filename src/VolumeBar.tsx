@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import './index.css';
+import { DeskThing } from 'deskthing-client'
+import { SocketData } from 'deskthing-server'
 
 const VolumeBar = () => {
     const [volume, setVolume] = useState(null);  // Initialize volume as null to detect changes
