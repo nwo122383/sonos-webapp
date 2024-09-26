@@ -24119,6 +24119,8 @@ var SonosHandler = class {
   name = "AVTransport";
   favoritesList = [];
   // Store favorites here
+  deviceUUID = null;
+  // Store the device UUID
   // Method to execute the SOAP command
   async execute(action, params = {}) {
     if (!this.deviceIP) {
@@ -24130,14 +24132,14 @@ var SonosHandler = class {
     const soapAction = `"urn:schemas-upnp-org:service:AVTransport:1#${action}"`;
     const xmlParams = Object.keys(params).map((key) => `<${key}>${this.escape(params[key])}</${key}>`).join("");
     const request = `<?xml version="1.0" encoding="utf-8"?>
-            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-                        s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-                <s:Body>
-                    <u:${action} xmlns:u="urn:schemas-upnp-org:service:${this.name}:1">
-                        ${xmlParams}
-                    </u:${action}>
-                </s:Body>
-            </s:Envelope>`;
+      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+              <u:${action} xmlns:u="urn:schemas-upnp-org:service:${this.name}:1">
+                  ${xmlParams}
+              </u:${action}>
+          </s:Body>
+      </s:Envelope>`;
     try {
       const response = await axios_default({
         method: "POST",
@@ -24181,19 +24183,19 @@ var SonosHandler = class {
     const url2 = `http://${this.deviceIP}:${this.port}/MediaServer/ContentDirectory/Control`;
     const soapAction = `"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"`;
     const request = `<?xml version="1.0" encoding="utf-8"?>
-        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-                    s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-            <s:Body>
-                <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
-                    <ObjectID>FV:2</ObjectID>
-                    <BrowseFlag>BrowseDirectChildren</BrowseFlag>
-                    <Filter>*</Filter>
-                    <StartingIndex>0</StartingIndex>
-                    <RequestedCount>100</RequestedCount>
-                    <SortCriteria></SortCriteria>
-                </u:Browse>
-            </s:Body>
-        </s:Envelope>`;
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+        <s:Body>
+            <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
+                <ObjectID>FV:2</ObjectID>
+                <BrowseFlag>BrowseDirectChildren</BrowseFlag>
+                <Filter>*</Filter>
+                <StartingIndex>0</StartingIndex>
+                <RequestedCount>100</RequestedCount>
+                <SortCriteria></SortCriteria>
+            </u:Browse>
+        </s:Body>
+    </s:Envelope>`;
     this.sendLog(`Fetching Sonos favorites`);
     try {
       const response = await axios_default({
@@ -24262,12 +24264,24 @@ var SonosHandler = class {
       if (typeof metaData !== "string") {
         throw new Error("Metadata is not a string");
       }
-      const parser = new import_xml2js.default.Parser({ explicitArray: false, ignoreAttrs: true });
-      const parsedMetaData = await parser.parseStringPromise(metaData);
-      const item = parsedMetaData["DIDL-Lite"]["item"];
+      const parser = new import_xml2js.default.Parser({ explicitArray: false, ignoreAttrs: false });
+      let parsedMetaData = await parser.parseStringPromise(metaData);
+      let item = parsedMetaData["DIDL-Lite"]["item"];
       const upnpClass = item["upnp:class"];
+      const resElement = item["res"];
       this.sendLog(`Using metadata with upnp:class: ${upnpClass}`);
-      if (upnpClass.includes("object.container.album.musicAlbum") || upnpClass.includes("object.container.playlistContainer")) {
+      const isSpotifyContent = uri.includes("spotify");
+      if (isSpotifyContent) {
+        if (!resElement) {
+          this.sendLog("Metadata lacks <res> element, generating metadata for Spotify content.");
+          metaData = this.generateSpotifyMetaData(uri, item);
+          parsedMetaData = await parser.parseStringPromise(metaData);
+          item = parsedMetaData["DIDL-Lite"]["item"];
+        }
+        await this.setAVTransportURI(uri, metaData);
+        await this.play();
+        this.sendLog(`Playing Spotify favorite: ${item["dc:title"]}`);
+      } else if (upnpClass.includes("object.container.album.musicAlbum") || upnpClass.includes("object.container.playlistContainer")) {
         await this.clearQueue();
         const response = await this.addURIToQueue(uri, metaData);
         const trackNr = response.FirstTrackNumberEnqueued || 1;
@@ -24285,6 +24299,29 @@ var SonosHandler = class {
       this.sendError(`Error playing favorite: ${error.message}`);
     }
   }
+  // Method to generate metadata for Spotify content
+  generateSpotifyMetaData(uri, item) {
+    const title = item["dc:title"] || "Favorite";
+    const upnpClass = item["upnp:class"] || "object.container.playlistContainer";
+    const itemId = item["$"] && item["$"]["id"] ? item["$"]["id"] : uri;
+    const parentId = item["$"] && item["$"]["parentID"] ? item["$"]["parentID"] : "0";
+    const cdudn = item["desc"] && item["desc"]["_"] ? item["desc"]["_"] : "";
+    const protocolInfo = "x-rincon-cpcontainer:*:*:*";
+    return `
+      <DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/"
+                 xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"
+                 xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/">
+          <item id="${this.escape(itemId)}" parentID="${this.escape(parentId)}" restricted="true">
+              <dc:title>${this.escape(title)}</dc:title>
+              <upnp:class>${upnpClass}</upnp:class>
+              <res protocolInfo="${protocolInfo}">${this.escape(uri)}</res>
+              <desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">
+                  ${cdudn}
+              </desc>
+          </item>
+      </DIDL-Lite>`;
+  }
+  // Method to add URI to queue
   async addURIToQueue(uri, metadata) {
     return this.execute("AddURIToQueue", {
       InstanceID: 0,
@@ -24294,15 +24331,43 @@ var SonosHandler = class {
       EnqueueAsNext: 0
     });
   }
+  // Method to clear the queue
   async clearQueue() {
     return this.execute("RemoveAllTracksFromQueue", { InstanceID: 0 });
   }
+  // Method to set AVTransportURI to queue
   async playFromQueue() {
-    const queueURI = `x-rincon-queue:${this.deviceIP}#0`;
+    const uuid = await this.getDeviceUUID();
+    const queueURI = `x-rincon-queue:${uuid}#0`;
     await this.setAVTransportURI(queueURI, "");
   }
+  // Method to seek
   async seek(unit, target) {
     return this.execute("Seek", { InstanceID: 0, Unit: unit, Target: target });
+  }
+  // Method to retrieve the device UUID
+  async getDeviceUUID() {
+    if (this.deviceUUID) {
+      return this.deviceUUID;
+    }
+    if (!this.deviceIP) {
+      throw new Error("Sonos device IP is not set.");
+    }
+    try {
+      const response = await axios_default.get(`http://${this.deviceIP}:${this.port}/status/zp`);
+      const data = response.data;
+      const parser = new import_xml2js.default.Parser({ explicitArray: false, ignoreAttrs: false });
+      const result = await parser.parseStringPromise(data);
+      const localUID = result.ZPSupportInfo?.ZPInfo?.LocalUID || result.ZPInfo?.LocalUID;
+      if (!localUID) {
+        throw new Error("Unable to retrieve device UUID.");
+      }
+      this.deviceUUID = localUID;
+      return localUID;
+    } catch (error) {
+      this.sendError("Error retrieving device UUID: " + error.message);
+      throw error;
+    }
   }
   // Method to set the AVTransport URI
   async setAVTransportURI(uri, metadata) {
@@ -24315,6 +24380,21 @@ var SonosHandler = class {
   async play() {
     await this.execute("Play", { Speed: "1" });
     this.startPollingTrackInfo();
+  }
+  // Method to pause
+  async pause() {
+    await this.execute("Pause");
+    this.stopPollingTrackInfo();
+  }
+  // Method to go to next track
+  async next() {
+    await this.execute("Next");
+    await this.getTrackInfo();
+  }
+  // Method to go to previous track
+  async previous() {
+    await this.execute("Previous");
+    await this.getTrackInfo();
   }
   // Method to start polling
   startPollingTrackInfo(interval = 3e4) {
@@ -24356,23 +24436,10 @@ var SonosHandler = class {
         const metaResult = await parser.parseStringPromise(trackMetaData);
         const item = metaResult["DIDL-Lite"] && metaResult["DIDL-Lite"]["item"];
         albumArtURI = item && item["upnp:albumArtURI"] || null;
-        if (item && item["r:streamContent"]) {
-          const streamContent = item["r:streamContent"];
-          this.sendLog(`Stream Content: ${streamContent}`);
-          const artistMatch = streamContent.match(/ARTIST\s+([^|]+)\|/);
-          const titleMatch = streamContent.match(/TITLE\s+([^|]+)\|/);
-          const albumMatch = streamContent.match(/ALBUM\s+(.*)/);
-          const artist = artistMatch ? artistMatch[1].trim() : "Unknown Artist";
-          const title = titleMatch ? titleMatch[1].trim() : "Unknown Track";
-          album = albumMatch ? albumMatch[1].trim() : "Unknown Album";
-          trackInfo = `${artist} - ${title}`;
-          this.sendLog(`Extracted Stream Info: ${trackInfo}, Album - ${album}`);
-        } else {
-          const artist = item && item["dc:creator"] || "Unknown Artist";
-          const title = item && item["dc:title"] || "Unknown Track";
-          album = item && item["upnp:album"] || "Unknown Album";
-          trackInfo = `${artist} - ${title}`;
-        }
+        const artist = item && item["dc:creator"] || "Unknown Artist";
+        const title = item && item["dc:title"] || "Unknown Track";
+        album = item && item["upnp:album"] || "Unknown Album";
+        trackInfo = `${artist} - ${title}`;
         if (albumArtURI && (albumArtURI.startsWith("http://") || albumArtURI.startsWith("https://"))) {
           this.sendLog(`Album art URI: ${albumArtURI}`);
         } else if (albumArtURI) {
@@ -24416,41 +24483,21 @@ var SonosHandler = class {
       return null;
     }
   }
-  // Method to pause
-  async pause() {
-    await this.execute("Pause");
-    this.stopPollingTrackInfo();
-  }
-  // Method to go to next track
-  async next() {
-    await this.execute("Next");
-    await this.getTrackInfo();
-  }
-  // Method to go to previous track
-  async previous() {
-    await this.execute("Previous");
-    await this.getTrackInfo();
-  }
-  // Method to check for refresh (update track info)
-  async checkForRefresh() {
-    this.sendLog("Checking for refresh...");
-    await this.getTrackInfo();
-  }
   // Method to set volume
   async setVolume(volume) {
     const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
     const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"`;
     const request = `<?xml version="1.0" encoding="utf-8"?>
-            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-                        s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-                <s:Body>
-                    <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
-                        <InstanceID>0</InstanceID>
-                        <Channel>Master</Channel>
-                        <DesiredVolume>${volume}</DesiredVolume>
-                    </u:SetVolume>
-                </s:Body>
-            </s:Envelope>`;
+      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+              <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                  <InstanceID>0</InstanceID>
+                  <Channel>Master</Channel>
+                  <DesiredVolume>${volume}</DesiredVolume>
+              </u:SetVolume>
+          </s:Body>
+      </s:Envelope>`;
     this.sendLog(`Setting volume to ${volume}`);
     try {
       const response = await axios_default({
@@ -24477,15 +24524,15 @@ var SonosHandler = class {
     const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
     const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#GetVolume"`;
     const request = `<?xml version="1.0" encoding="utf-8"?>
-            <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-                        s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-                <s:Body>
-                    <u:GetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
-                        <InstanceID>0</InstanceID>
-                        <Channel>Master</Channel>
-                    </u:GetVolume>
-                </s:Body>
-            </s:Envelope>`;
+      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+              <u:GetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                  <InstanceID>0</InstanceID>
+                  <Channel>Master</Channel>
+              </u:GetVolume>
+          </s:Body>
+      </s:Envelope>`;
     try {
       const response = await axios_default.post(url2, request, {
         headers: {
@@ -24502,6 +24549,11 @@ var SonosHandler = class {
       console.error("Error getting current volume:", error);
       throw error;
     }
+  }
+  // Method to check for refresh (update track info)
+  async checkForRefresh() {
+    this.sendLog("Checking for refresh...");
+    await this.getTrackInfo();
   }
 };
 var sonos_default = SonosHandler;
