@@ -24093,22 +24093,37 @@ var SonosHandler = class {
   deviceIP = null;
   port = 1400;
   controlURL = `/MediaRenderer/AVTransport/Control`;
-  currentVolume = 25;
-  pollingInterval = null;
-  trackPositionInterval = null;
-  avTransport = "MediaRenderer/AVTransport";
-  contentDirectory = "MediaServer/ContentDirectory";
-  zoneGroupTopology = "ZoneGroupTopology";
-  renderingControl = "MediaRenderer/RenderingControl";
-  zoneGroupState;
-  name = "AVTransport";
+  avTransport = "AVTransport";
+  renderingControl = "RenderingControl";
   favoritesList = [];
-  // Store favorites here
   deviceUUID = null;
-  // Store the device UUID
-  // Store the last known track info
   lastKnownSongData = null;
-  // Method to execute the SOAP command
+  pollingInterval = null;
+  selectedSpeakerUUID = null;
+  speakersList = {};
+  // Implement getSpeakerIPByUUID
+  async getSpeakerIPByUUID(uuid) {
+    if (this.speakersList && this.speakersList[uuid]) {
+      return this.speakersList[uuid].ip;
+    }
+    await this.getZoneGroupState();
+    if (this.speakersList[uuid]) {
+      return this.speakersList[uuid].ip;
+    }
+    return null;
+  }
+  // Select speaker
+  async selectSpeaker(uuid) {
+    this.selectedSpeakerUUID = uuid;
+    const speakerIP = await this.getSpeakerIPByUUID(uuid);
+    if (speakerIP) {
+      this.deviceIP = speakerIP;
+      this.sendLog(`Selected speaker set to UUID: ${uuid}, IP: ${speakerIP}`);
+    } else {
+      this.sendError(`Speaker with UUID ${uuid} not found.`);
+    }
+  }
+  // Method to execute SOAP commands
   async execute(action, params = {}) {
     if (!this.deviceIP) {
       throw new Error("Sonos device IP is not set.");
@@ -24122,7 +24137,7 @@ var SonosHandler = class {
       <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
                   s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
           <s:Body>
-              <u:${action} xmlns:u="urn:schemas-upnp-org:service:${this.name}:1">
+              <u:${action} xmlns:u="urn:schemas-upnp-org:service:${this.avTransport}:1">
                   ${xmlParams}
               </u:${action}>
           </s:Body>
@@ -24149,7 +24164,7 @@ var SonosHandler = class {
       throw error;
     }
   }
-  // Helper method to escape XML special characters
+  // Helper to escape XML special characters
   escape(input) {
     if (typeof input === "string") {
       return input.replace(/[<>&'"]/g, (c) => ({
@@ -24162,22 +24177,195 @@ var SonosHandler = class {
     }
     return input;
   }
-  // Parse URI query parameters
-  parseUriQuery(uri) {
-    const queryIndex = uri.indexOf("?");
-    if (queryIndex === -1) {
-      return {};
+  // Implement addSpeakerToGroup
+  async addSpeakerToGroup(speakerIP, coordinatorIP) {
+    try {
+      if (!coordinatorIP || !speakerIP) {
+        throw new Error("Coordinator IP or speaker IP is not provided");
+      }
+      const coordinatorUUID = await this.getDeviceUUID(coordinatorIP);
+      const uri = `x-rincon:${coordinatorUUID}`;
+      const originalDeviceIP = this.deviceIP;
+      this.deviceIP = speakerIP;
+      await this.setAVTransportURI(uri, "");
+      this.sendLog(`Speaker ${speakerIP} added to group with coordinator: ${coordinatorUUID}`);
+      this.deviceIP = originalDeviceIP;
+    } catch (error) {
+      this.sendError("Error adding speaker to group: " + error.message);
+      console.error("Error adding speaker to group:", error);
     }
-    const queryString = uri.substring(queryIndex + 1);
-    const pairs = queryString.split("&");
-    const queryParams = {};
-    for (const pair of pairs) {
-      const [key, value] = pair.split("=");
-      queryParams[key] = decodeURIComponent(value || "");
-    }
-    return queryParams;
   }
-  // Fetch and send favorites to the frontend
+  // Modify leaveGroup to accept speakerIP
+  async leaveGroup(speakerIP) {
+    try {
+      const originalDeviceIP = this.deviceIP;
+      this.deviceIP = speakerIP;
+      const deviceUUID = await this.getDeviceUUID();
+      await this.setAVTransportURI(`x-rincon-queue:${deviceUUID}#0`, "");
+      this.sendLog(`Speaker ${speakerIP} left the group`);
+      this.deviceIP = originalDeviceIP;
+    } catch (error) {
+      this.sendError("Error leaving group: " + error.message);
+      console.error("Error leaving group:", error);
+    }
+  }
+  // Fetch zone group state
+  async getZoneGroupState() {
+    const url2 = `http://${this.deviceIP}:${this.port}/ZoneGroupTopology/Control`;
+    const soapAction = `"urn:schemas-upnp-org:service:ZoneGroupTopology:1#GetZoneGroupState"`;
+    const request = `<?xml version="1.0" encoding="utf-8"?>
+      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+              <u:GetZoneGroupState xmlns:u="urn:schemas-upnp-org:service:ZoneGroupTopology:1"></u:GetZoneGroupState>
+          </s:Body>
+      </s:Envelope>`;
+    try {
+      const response = await axios_default.post(url2, request, {
+        headers: {
+          "SOAPAction": soapAction,
+          "Content-Type": "text/xml; charset=utf-8"
+        }
+      });
+      const parser = new import_xml2js.default.Parser({
+        explicitArray: false,
+        mergeAttrs: true,
+        ignoreAttrs: false,
+        tagNameProcessors: [import_xml2js.default.processors.stripPrefix]
+      });
+      const result = await parser.parseStringPromise(response.data);
+      const zoneGroupState = result["Envelope"]["Body"]["GetZoneGroupStateResponse"]["ZoneGroupState"];
+      const xmlParser = new import_xml2js.default.Parser({
+        explicitArray: false,
+        explicitRoot: false,
+        mergeAttrs: true,
+        ignoreAttrs: false,
+        xmlns: false,
+        tagNameProcessors: [import_xml2js.default.processors.stripPrefix]
+      });
+      const zoneGroupStateParsed = await xmlParser.parseStringPromise(zoneGroupState);
+      console.log("Parsed ZoneGroupState:", JSON.stringify(zoneGroupStateParsed, null, 2));
+      const zoneGroups = zoneGroupStateParsed.ZoneGroups?.ZoneGroup;
+      if (!zoneGroups) {
+        throw new Error("No ZoneGroups found in ZoneGroupState.");
+      }
+      const groups = Array.isArray(zoneGroups) ? zoneGroups : [zoneGroups];
+      const speakersList = {};
+      for (const group of groups) {
+        const members = Array.isArray(group.ZoneGroupMember) ? group.ZoneGroupMember : [group.ZoneGroupMember];
+        for (const member of members) {
+          const uuid = member.UUID;
+          const location = member.Location;
+          const zoneName = member.ZoneName;
+          const ip = this.extractIPAddress(location);
+          if (uuid && ip) {
+            speakersList[uuid] = { ip, zoneName };
+          }
+        }
+      }
+      this.speakersList = speakersList;
+      import_deskthing_server.DeskThing.getInstance().sendDataToClient({
+        app: "sonos-webapp",
+        type: "zoneGroupState",
+        payload: zoneGroupState
+      });
+      return zoneGroupState;
+    } catch (error) {
+      this.sendError("Error getting zone group state: " + error.message);
+      throw error;
+    }
+  }
+  // Join group
+  async joinGroup(coordinatorIP, deviceIP) {
+    try {
+      if (!coordinatorIP || !deviceIP) {
+        throw new Error("Coordinator IP or device IP is not provided");
+      }
+      const coordinatorUUID = await this.getDeviceUUID(coordinatorIP);
+      const uri = `x-rincon:${coordinatorUUID}`;
+      const originalDeviceIP = this.deviceIP;
+      this.deviceIP = deviceIP;
+      await this.setAVTransportURI(uri, "");
+      this.sendLog(`Device ${deviceIP} joined group with coordinator: ${coordinatorUUID}`);
+      this.deviceIP = originalDeviceIP;
+    } catch (error) {
+      this.sendError("Error joining group: " + error.message);
+      console.error("Error joining group:", error);
+    }
+  }
+  // Get device UUID
+  async getDeviceUUID(deviceIP = this.deviceIP) {
+    if (!deviceIP) {
+      throw new Error("Device IP is not set.");
+    }
+    try {
+      const response = await axios_default.get(`http://${deviceIP}:${this.port}/status/zp`);
+      const data = response.data;
+      const parser = new import_xml2js.default.Parser({ explicitArray: false, ignoreAttrs: false });
+      const result = await parser.parseStringPromise(data);
+      const localUID = result.ZPSupportInfo?.ZPInfo?.LocalUID || result.ZPInfo?.LocalUID;
+      if (!localUID) {
+        throw new Error("Unable to retrieve device UUID.");
+      }
+      return localUID;
+    } catch (error) {
+      this.sendError("Error retrieving device UUID: " + error.message);
+      throw error;
+    }
+  }
+  async getCurrentPlayMode() {
+    const action = "GetTransportSettings";
+    const params = { InstanceID: 0 };
+    try {
+      const result = await this.execute(action, params);
+      const playMode = result["PlayMode"];
+      this.sendLog(`Current play mode: ${playMode}`);
+      return playMode;
+    } catch (error) {
+      this.sendError("Error getting current play mode: " + error.message);
+      throw error;
+    }
+  }
+  async shuffle(state) {
+    try {
+      const currentPlayMode = await this.getCurrentPlayMode();
+      const isRepeat = currentPlayMode.includes("REPEAT");
+      let newPlayMode = "";
+      if (state) {
+        newPlayMode = isRepeat ? "SHUFFLE" : "SHUFFLE_NOREPEAT";
+      } else {
+        newPlayMode = isRepeat ? "REPEAT_ALL" : "NORMAL";
+      }
+      await this.execute("SetPlayMode", { NewPlayMode: newPlayMode });
+      this.sendLog(`Shuffle mode set to ${state ? "on" : "off"}`);
+    } catch (error) {
+      this.sendError("Error setting shuffle mode: " + error.message);
+    }
+  }
+  // Set repeat mode
+  async repeat(state) {
+    try {
+      const currentPlayMode = await this.getCurrentPlayMode();
+      const isShuffle = currentPlayMode.includes("SHUFFLE");
+      let newPlayMode = "";
+      switch (state) {
+        case "off":
+          newPlayMode = isShuffle ? "SHUFFLE_NOREPEAT" : "NORMAL";
+          break;
+        case "all":
+          newPlayMode = isShuffle ? "SHUFFLE" : "REPEAT_ALL";
+          break;
+        case "one":
+          newPlayMode = isShuffle ? "SHUFFLE" : "REPEAT_ONE";
+          break;
+      }
+      await this.execute("SetPlayMode", { NewPlayMode: newPlayMode });
+      this.sendLog(`Repeat mode set to ${state}`);
+    } catch (error) {
+      this.sendError("Error setting repeat mode: " + error.message);
+    }
+  }
+  // Fetch and send favorites to frontend
   async getFavorites() {
     if (!this.deviceIP) {
       throw new Error("Sonos device IP is not set.");
@@ -24226,32 +24414,32 @@ var SonosHandler = class {
       if (!Array.isArray(items)) {
         items = [items];
       }
-      const favoritesList = await Promise.all(items.map(async (item) => {
-        const title = item["dc:title"] || "Unknown Title";
-        const uri = item["res"] || null;
-        const albumArtURI = item["upnp:albumArtURI"] || null;
-        const metaData = item["r:resMD"] || item["resMD"] || "";
-        let formattedAlbumArtURI = albumArtURI;
-        if (albumArtURI && !albumArtURI.startsWith("http://") && !albumArtURI.startsWith("https://")) {
-          formattedAlbumArtURI = `http://${this.deviceIP}:${this.port}${albumArtURI}`;
-        }
-        const encodedAlbumArtURI = formattedAlbumArtURI ? await this.getImageData(formattedAlbumArtURI) : null;
-        return {
-          title,
-          uri,
-          albumArt: encodedAlbumArtURI || null,
-          metaData
-          // Store metadata as-is
-        };
-      }));
+      const favoritesList = await Promise.all(
+        items.map(async (item) => {
+          const title = item["dc:title"] || "Unknown Title";
+          const uri = item["res"] || null;
+          const albumArtURI = item["upnp:albumArtURI"] || null;
+          const metaData = item["r:resMD"] || item["resMD"] || "";
+          let formattedAlbumArtURI = albumArtURI;
+          if (albumArtURI && !albumArtURI.startsWith("http://") && !albumArtURI.startsWith("https://")) {
+            formattedAlbumArtURI = `http://${this.deviceIP}:${this.port}${albumArtURI}`;
+          }
+          const encodedAlbumArtURI = formattedAlbumArtURI ? await this.getImageData(formattedAlbumArtURI) : null;
+          return {
+            title,
+            uri,
+            albumArt: encodedAlbumArtURI || null,
+            metaData
+          };
+        })
+      );
       this.favoritesList = favoritesList;
-      import_deskthing_server.DeskThing.getInstance().sendDataToClient({ app: "client", type: "favorites", payload: favoritesList });
       import_deskthing_server.DeskThing.getInstance().sendDataToClient({ app: "sonos-webapp", type: "favorites", payload: favoritesList });
     } catch (error) {
       this.sendError(`Error fetching favorites: ${error.response ? error.response.data : error.message}`);
     }
   }
-  // Method to play a favorite
+  // Play favorite
   async playFavorite(uri, metaData = null) {
     try {
       this.sendLog(`Attempting to play favorite URI: ${uri}`);
@@ -24287,7 +24475,7 @@ var SonosHandler = class {
       this.sendError(`Error playing favorite: ${error.message}`);
     }
   }
-  // Method to add URI to queue
+  // Add URI to queue
   async addURIToQueue(uri, metadata) {
     return this.execute("AddURIToQueue", {
       InstanceID: 0,
@@ -24297,72 +24485,48 @@ var SonosHandler = class {
       EnqueueAsNext: 0
     });
   }
-  // Method to clear the queue
+  // Clear the queue
   async clearQueue() {
     return this.execute("RemoveAllTracksFromQueue", { InstanceID: 0 });
   }
-  // Method to set AVTransportURI to queue
+  // Set AVTransportURI to queue
   async playFromQueue() {
     const uuid = await this.getDeviceUUID();
     const queueURI = `x-rincon-queue:${uuid}#0`;
     await this.setAVTransportURI(queueURI, "");
   }
-  // Method to seek
+  // Seek method
   async seek(unit, target) {
     return this.execute("Seek", { InstanceID: 0, Unit: unit, Target: target });
   }
-  // Method to retrieve the device UUID
-  async getDeviceUUID() {
-    if (this.deviceUUID) {
-      return this.deviceUUID;
-    }
-    if (!this.deviceIP) {
-      throw new Error("Sonos device IP is not set.");
-    }
-    try {
-      const response = await axios_default.get(`http://${this.deviceIP}:${this.port}/status/zp`);
-      const data = response.data;
-      const parser = new import_xml2js.default.Parser({ explicitArray: false, ignoreAttrs: false });
-      const result = await parser.parseStringPromise(data);
-      const localUID = result.ZPSupportInfo?.ZPInfo?.LocalUID || result.ZPInfo?.LocalUID;
-      if (!localUID) {
-        throw new Error("Unable to retrieve device UUID.");
-      }
-      this.deviceUUID = localUID;
-      return localUID;
-    } catch (error) {
-      this.sendError("Error retrieving device UUID: " + error.message);
-      throw error;
-    }
-  }
-  // Method to set the AVTransport URI
+  // Set AVTransportURI
   async setAVTransportURI(uri, metadata) {
     return this.execute("SetAVTransportURI", {
       CurrentURI: uri,
       CurrentURIMetaData: metadata || ""
     });
   }
-  // Method to play
+  // Play
   async play() {
     await this.execute("Play", { Speed: "1" });
     this.startPollingTrackInfo(5e3);
   }
-  // Method to pause
+  // Pause
   async pause() {
     await this.execute("Pause");
     this.stopPollingTrackInfo();
   }
-  // Method to go to next track
+  // Next track
   async next() {
     await this.execute("Next");
     await this.getTrackInfo();
   }
-  // Method to go to previous track
+  // Previous track
   async previous() {
     await this.execute("Previous");
     await this.getTrackInfo();
   }
-  // Method to start polling
+  // Start polling track info
   startPollingTrackInfo(interval = 5e3) {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
@@ -24371,22 +24535,14 @@ var SonosHandler = class {
       this.getTrackInfo();
     }, interval);
   }
-  // Method to stop polling
+  // Stop polling track info
   stopPollingTrackInfo() {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
   }
-  // Helper method to send logs
-  async sendLog(message) {
-    import_deskthing_server.DeskThing.getInstance().sendLog(message);
-  }
-  // Helper method to send errors
-  async sendError(message) {
-    import_deskthing_server.DeskThing.getInstance().sendError(message);
-  }
-  // Fetch track info
+  // Get track info
   async getTrackInfo() {
     const action = "GetPositionInfo";
     const params = { InstanceID: 0 };
@@ -24452,7 +24608,9 @@ var SonosHandler = class {
           thumbnail: albumArtURI ? await this.getImageData(albumArtURI) : this.lastKnownSongData && this.lastKnownSongData.thumbnail || null
         };
         this.lastKnownSongData = songData;
-        this.sendLog(`Fetched Track Info: ${songData.artist} - ${songData.track_name}, Album - ${songData.album}, AlbumArtURI - ${albumArtURI}`);
+        this.sendLog(
+          `Fetched Track Info: ${songData.artist} - ${songData.track_name}, Album - ${songData.album}, AlbumArtURI - ${albumArtURI}`
+        );
         import_deskthing_server.DeskThing.getInstance().sendDataToClient({ app: "client", type: "song", payload: songData });
         import_deskthing_server.DeskThing.getInstance().sendDataToClient({ app: "sonos-webapp", type: "song", payload: songData });
       } else {
@@ -24461,7 +24619,7 @@ var SonosHandler = class {
     } catch (error) {
       this.sendError("Error getting track info: " + error.message);
       import_deskthing_server.DeskThing.getInstance().sendDataToClient({
-        app: "client",
+        app: "sonos-webapp",
         type: "song",
         payload: this.lastKnownSongData || {
           track_name: "Unknown Track",
@@ -24472,20 +24630,15 @@ var SonosHandler = class {
       });
     }
   }
-  // Helper function to fetch the image data and convert it to base64
-  async getImageData(imageUrl) {
-    try {
-      const response = await axios_default.get(imageUrl, { responseType: "arraybuffer" });
-      const base64 = Buffer.from(response.data, "binary").toString("base64");
-      const mimeType = response.headers["content-type"];
-      return `data:${mimeType};base64,${base64}`;
-    } catch (error) {
-      this.sendError("Error fetching image: " + error.message);
-      return null;
-    }
-  }
-  // Method to set volume
+  // Set volume
   async setVolume(volume) {
+    const originalDeviceIP = this.deviceIP;
+    if (this.selectedSpeakerUUID) {
+      const speakerIP = await this.getSpeakerIPByUUID(this.selectedSpeakerUUID);
+      if (speakerIP) {
+        this.deviceIP = speakerIP;
+      }
+    }
     const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
     const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"`;
     const request = `<?xml version="1.0" encoding="utf-8"?>
@@ -24510,18 +24663,28 @@ var SonosHandler = class {
         },
         data: request
       });
-      this.currentVolume = volume;
-      import_deskthing_server.DeskThing.getInstance().sendDataToClient({ app: "sonos-webapp", type: "volume", payload: volume });
+      import_deskthing_server.DeskThing.getInstance().sendDataToClient({
+        app: "sonos-webapp",
+        type: "volumeChange",
+        payload: { volume }
+      });
       return response.data;
     } catch (error) {
       this.sendError(`Error setting volume: ${error.response ? error.response.data : error.message}`);
       throw error;
+    } finally {
+      this.deviceIP = originalDeviceIP;
     }
   }
-  // Method to get current volume
+  // Get current volume
   async getCurrentVolume() {
-    if (!this.deviceIP)
-      throw new Error("Sonos device IP is not set.");
+    const originalDeviceIP = this.deviceIP;
+    if (this.selectedSpeakerUUID) {
+      const speakerIP = await this.getSpeakerIPByUUID(this.selectedSpeakerUUID);
+      if (speakerIP) {
+        this.deviceIP = speakerIP;
+      }
+    }
     const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
     const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#GetVolume"`;
     const request = `<?xml version="1.0" encoding="utf-8"?>
@@ -24544,14 +24707,45 @@ var SonosHandler = class {
       const parser = new import_xml2js.default.Parser({ explicitArray: false });
       const result = await parser.parseStringPromise(response.data);
       const volume = parseInt(result["s:Envelope"]["s:Body"]["u:GetVolumeResponse"]["CurrentVolume"], 10);
-      this.currentVolume = volume;
+      this.sendLog("Fetched volume from Sonos: " + volume);
       return volume;
     } catch (error) {
-      console.error("Error getting current volume:", error);
+      this.sendError("Error getting current volume: " + error.message);
       throw error;
+    } finally {
+      this.deviceIP = originalDeviceIP;
     }
   }
-  // Method to check for refresh (update track info)
+  // Define the extractIPAddress method
+  extractIPAddress(url2) {
+    try {
+      const parsedURL = new URL(url2);
+      return parsedURL.hostname;
+    } catch (error) {
+      this.sendError("Error parsing URL to extract IP address: " + error.message);
+      return null;
+    }
+  }
+  // Helper function to fetch image data and convert to base64
+  async getImageData(imageUrl) {
+    try {
+      const response = await axios_default.get(imageUrl, { responseType: "arraybuffer" });
+      const base64 = Buffer.from(response.data, "binary").toString("base64");
+      const mimeType = response.headers["content-type"];
+      return `data:${mimeType};base64,${base64}`;
+    } catch (error) {
+      this.sendError("Error fetching image: " + error.message);
+      return null;
+    }
+  }
+  // Helper methods
+  async sendLog(message) {
+    import_deskthing_server.DeskThing.getInstance().sendLog(message);
+  }
+  async sendError(message) {
+    import_deskthing_server.DeskThing.getInstance().sendError(message);
+  }
+  // Check for refresh
   async checkForRefresh() {
     this.sendLog("Checking for refresh...");
     await this.getTrackInfo();
@@ -24565,47 +24759,50 @@ var DeskThing = import_deskthing_server2.DeskThing.getInstance();
 var sonos;
 var start = async () => {
   sonos = new sonos_default();
-  DeskThing.sendDataToClient("get", "data");
   DeskThing.on("get", handleGet);
   DeskThing.on("set", handleSet);
-  DeskThing.on("data", (data2) => {
-    if (data2.Sonos_IP) {
-      sonos.deviceIP = data2.Sonos_IP;
-      sonos.getTrackInfo();
-      sonos.getFavorites();
-    } else {
-      promptForIP();
-    }
-  });
   const data = await DeskThing.getData();
   if (data.Sonos_IP) {
     sonos.deviceIP = data.Sonos_IP;
-    sonos.getTrackInfo();
-    sonos.getFavorites();
+    await sonos.getTrackInfo();
+    await sonos.getFavorites();
+    await sonos.getZoneGroupState();
   } else {
     promptForIP();
   }
 };
 var promptForIP = () => {
-  DeskThing.getUserInput({
-    Sonos_IP: {
-      value: "",
-      label: "Sonos Device IP",
-      instructions: "Please enter the IP address of your Sonos device."
+  DeskThing.getUserInput(
+    {
+      Sonos_IP: {
+        value: "",
+        label: "Sonos Device IP",
+        instructions: "Please enter the IP address of your Sonos device."
+      }
+    },
+    (data) => {
+      if (data.payload.Sonos_IP) {
+        DeskThing.saveData({ Sonos_IP: data.payload.Sonos_IP });
+        sonos.deviceIP = data.payload.Sonos_IP;
+        sonos.getTrackInfo();
+        sonos.getFavorites();
+        sonos.getZoneGroupState();
+      } else {
+        DeskThing.sendError("No IP address provided!");
+      }
     }
-  }, (data) => {
-    if (data.payload.Sonos_IP) {
-      DeskThing.saveData({ Sonos_IP: data.payload.Sonos_IP });
-      sonos.deviceIP = data.payload.Sonos_IP;
-      sonos.getTrackInfo();
-      sonos.getFavorites();
-    } else {
-      DeskThing.sendError("No IP address provided!");
-    }
-  });
+  );
 };
 var handleGet = async (data) => {
   switch (data.request) {
+    case "playMode":
+      const playMode = await sonos.getCurrentPlayMode();
+      DeskThing.sendDataToClient({
+        app: "sonos-webapp",
+        type: "playMode",
+        payload: { playMode }
+      });
+      break;
     case "song":
       await sonos.getTrackInfo();
       break;
@@ -24614,6 +24811,29 @@ var handleGet = async (data) => {
       break;
     case "favorites":
       await sonos.getFavorites();
+      break;
+    case "volume":
+      try {
+        const currentVolume = await sonos.getCurrentVolume();
+        DeskThing.sendDataToClient({
+          app: "sonos-webapp",
+          type: "currentVolume",
+          payload: { volume: currentVolume }
+        });
+        console.log("Fetched current volume:", currentVolume);
+      } catch (error) {
+        DeskThing.sendError(`Error fetching volume: ${error.message}`);
+      }
+      break;
+    case "zoneGroupState":
+      await sonos.getZoneGroupState();
+      break;
+    case "selectedSpeaker":
+      DeskThing.sendDataToClient({
+        app: "sonos-webapp",
+        type: "selectedSpeaker",
+        payload: { uuid: sonos.selectedSpeakerUUID }
+      });
       break;
     default:
       DeskThing.sendError(`Unknown request: ${data.request}`);
@@ -24634,55 +24854,55 @@ var handleSet = async (data) => {
     case "pause":
       await sonos.pause();
       break;
-    case "getTrackInfo":
-      await sonos.getTrackInfo();
+    case "addSpeakerToGroup":
+      if (data.payload && data.payload.coordinatorIP && data.payload.speakerIP) {
+        await sonos.addSpeakerToGroup(data.payload.speakerIP, data.payload.coordinatorIP);
+      } else {
+        DeskThing.sendError("Coordinator IP or speaker IP not provided for addSpeakerToGroup");
+      }
       break;
-    case "stopPolling":
-      sonos.stopPollingTrackInfo();
+    case "leaveGroup":
+      if (data.payload && data.payload.speakerIP) {
+        await sonos.leaveGroup(data.payload.speakerIP);
+      } else {
+        DeskThing.sendError("Speaker IP not provided for leaveGroup");
+      }
       break;
     case "playFavorite":
       if (data.payload && data.payload.uri) {
-        console.log("Playing favorite with URI:", data.payload.uri);
         await sonos.playFavorite(data.payload.uri);
-        if (data.payload.play === "1") {
-          await sonos.play();
-        }
       } else {
         DeskThing.sendError("No URI provided for playFavorite");
       }
       break;
-    case "playUri":
-      if (data.payload && data.payload.uri) {
-        console.log("Playing URI:", data.payload.uri);
-        await sonos.playUri(data.payload.uri);
-        if (data.payload.play === "1") {
-          await sonos.play();
-        }
+    case "volumeChange":
+      if (data.payload && data.payload.volume !== void 0) {
+        const newVolume = data.payload.volume;
+        await sonos.setVolume(newVolume);
+        DeskThing.sendDataToClient({
+          app: "sonos-webapp",
+          type: "volumeChange",
+          payload: { volume: newVolume }
+        });
       } else {
-        DeskThing.sendError("No URI provided for playUri");
+        DeskThing.sendError("No volume provided for volumeChange");
       }
       break;
-    case "volumeChange":
-      const newVolume = data.payload.volume;
-      await sonos.setVolume(newVolume);
-      console.log("Set volume to:", newVolume);
-      DeskThing.sendMessageToClients({
-        app: "sonos-webapp",
-        type: "volumeChange",
-        payload: { volume: newVolume }
-      });
+    case "shuffle":
+      await sonos.shuffle(data.payload.state);
       break;
-    case "volume":
-      await sonos.setVolume(data.payload);
-      console.log("Set current volume:", data.payload);
-      DeskThing.sendMessageToClients({
-        app: "sonos-webapp",
-        type: "currentVolume",
-        payload: { volume: data.payload }
-      });
+    case "repeat":
+      await sonos.repeat(data.payload.state);
+      break;
+    case "selectSpeaker":
+      if (data.payload && data.payload.uuid) {
+        await sonos.selectSpeaker(data.payload.uuid);
+      } else {
+        DeskThing.sendError("No UUID provided for selectSpeaker");
+      }
       break;
     default:
-      DeskThing.sendError(`Unknown action: ${data.request}`);
+      DeskThing.sendError(`Unknown request: ${data.request}`);
       break;
   }
 };

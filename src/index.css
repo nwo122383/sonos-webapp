@@ -1,78 +1,64 @@
-/* Volume bar styling */
-#volume-bar {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 300px;
-  height: 20px;
-  background-color: rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  display: none;  /* Initially hidden */
-}
+/* src/index.css */
 
-#volume-fill {
-  height: 100%;
-  background-color: #4caf50;  /* Green fill to show volume */
-  width: 0%;  /* This will be updated dynamically */
-  border-radius: 10px;
-}
-
-/* Track info styling */
-#track-info {
-  text-align: center;
-  margin-top: 20px;
-}
-
-#track-info img {
-  width: 100px;
-  height: 100px;
-  object-fit: cover;
-  border-radius: 8px;
-  margin-bottom: 10px;
-}
-
-#track-name, #artist-name, #album-name {
-  font-size: 18px;
-  margin: 5px 0;
-}
-
-/* Favorites grid styling */
-#favorites-container {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr); /* 4 columns */
-  gap: 10px;
-  margin-top: 20px;
-}
-
-.favorite-item {
+.speaker-controls {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  background-color: #000000;
-  padding: 10px;
-  border-radius: 8px;
-  text-align: center;
-  box-shadow: 0 4px 8px rgba(144, 144, 144, 0.18);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.select-speaker-button,
+.group-button {
+  padding: 10px 20px;
+  font-size: 16px;
   cursor: pointer;
-  transition: transform 0.3s ease;
+}
+
+.select-speaker-button.selected {
+  background-color: #4caf50;
   color: white;
 }
 
+.select-speaker-button {
+  background-color: #008cba;
+  color: white;
+  border: none;
+}
+
+.group-button {
+  background-color: #f44336;
+  color: white;
+  border: none;
+}
+
+.speaker-item {
+  border: 1px solid #ccc;
+  padding: 15px;
+  margin-bottom: 10px;
+}
+
+.speaker-info {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.speaker-item.selected {
+  border-color: #4caf50;
+}
+
+.favorites-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.favorite-item {
+  width: 150px;
+  cursor: pointer;
+  text-align: center;
+}
+
 .favorite-item img {
-  width: 100px;
-  height: 100px;
-  object-fit: cover;
-  border-radius: 8px;
+  width: 100%;
+  height: auto;
 }
-
-.favorite-item:hover {
-  transform: scale(1.05);
-}
-
-.favorite-item div {
-  margin-top: 10px;
-  font-size: 16px;
-  font-weight: bold;
-}
- 
