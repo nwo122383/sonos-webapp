@@ -1,7 +1,7 @@
 // src/components/Favorites.tsx
 
 import React, { useEffect, useState } from 'react';
-import './index.css';
+import './Favorites.css';
 
 interface Favorite {
   uri: string;
@@ -20,10 +20,9 @@ interface Speaker {
 const Favorites = () => {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
-  const [selectedSpeakerUUID, setSelectedSpeakerUUID] = useState<string | null>(null);
+  const [selectedSpeakerUUIDs, setSelectedSpeakerUUIDs] = useState<string[]>([]);
 
   useEffect(() => {
-    // Request favorites and zone group state
     window.parent.postMessage(
       {
         type: 'IFRAME_ACTION',
@@ -80,21 +79,21 @@ const Favorites = () => {
         });
 
         setSpeakers(allSpeakers);
-      } else if (event.data.type === 'selectedSpeaker' && event.data.payload.uuid) {
-        setSelectedSpeakerUUID(event.data.payload.uuid);
+      } else if (event.data.type === 'selectedSpeakers' && event.data.payload.uuids) {
+        setSelectedSpeakerUUIDs(event.data.payload.uuids);
       }
     };
 
     window.addEventListener('message', handleMessage);
 
-    // Request the currently selected speaker
+    // Request the currently selected speakers
     window.parent.postMessage(
       {
         type: 'IFRAME_ACTION',
         payload: {
           app: 'sonos-webapp',
           type: 'get',
-          request: 'selectedSpeaker',
+          request: 'selectedSpeakers',
         },
       },
       '*'
@@ -115,37 +114,38 @@ const Favorites = () => {
     }
   };
 
-  const addSpeakerToGroup = (speakerIP: string, coordinatorIP: string) => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'set',
-          request: 'addSpeakerToGroup',
-          payload: { speakerIP, coordinatorIP },
-        },
-      },
-      '*'
-    );
-  };
+  const selectSpeaker = (uuid: string) => {
+    setSelectedSpeakerUUIDs((prevSelected) => {
+      let newSelected;
+      if (prevSelected.includes(uuid)) {
+        newSelected = prevSelected.filter((id) => id !== uuid);
+      } else {
+        newSelected = [...prevSelected, uuid];
+      }
 
-  const leaveGroup = (speakerIP: string) => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'set',
-          request: 'leaveGroup',
-          payload: { speakerIP },
+      window.parent.postMessage(
+        {
+          type: 'IFRAME_ACTION',
+          payload: {
+            app: 'sonos-webapp',
+            type: 'set',
+            request: 'selectSpeakers',
+            payload: { uuids: newSelected },
+          },
         },
-      },
-      '*'
-    );
+        '*'
+      );
+
+      return newSelected;
+    });
   };
 
   const handleFavoriteClick = (favorite: Favorite) => {
+    if (selectedSpeakerUUIDs.length === 0) {
+      alert('Please select at least one speaker to play the favorite.');
+      return;
+    }
+
     window.parent.postMessage(
       {
         type: 'IFRAME_ACTION',
@@ -153,25 +153,10 @@ const Favorites = () => {
           app: 'sonos-webapp',
           type: 'set',
           request: 'playFavorite',
-          payload: { uri: favorite.uri },
-        },
-      },
-      '*'
-    );
-  };
-
-  const selectSpeaker = (uuid: string) => {
-    setSelectedSpeakerUUID(uuid);
-
-    // Notify the backend of the selected speaker
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'set',
-          request: 'selectSpeaker',
-          payload: { uuid },
+          payload: {
+            uri: favorite.uri,
+            speakerUUIDs: selectedSpeakerUUIDs,
+          },
         },
       },
       '*'
@@ -180,14 +165,52 @@ const Favorites = () => {
 
   return (
     <div id="favorites-container">
-      <h2>Speakers</h2>
+      <h2>Select speaker to play favorites on</h2>
+
+      <button
+        onClick={() => {
+          if (selectedSpeakerUUIDs.length === speakers.length) {
+            setSelectedSpeakerUUIDs([]);
+
+            window.parent.postMessage(
+              {
+                type: 'IFRAME_ACTION',
+                payload: {
+                  app: 'sonos-webapp',
+                  type: 'set',
+                  request: 'selectSpeakers',
+                  payload: { uuids: [] },
+                },
+              },
+              '*'
+            );
+          } else {
+            const allUUIDs = speakers.map((speaker) => speaker.uuid);
+            setSelectedSpeakerUUIDs(allUUIDs);
+
+            window.parent.postMessage(
+              {
+                type: 'IFRAME_ACTION',
+                payload: {
+                  app: 'sonos-webapp',
+                  type: 'set',
+                  request: 'selectSpeakers',
+                  payload: { uuids: allUUIDs },
+                },
+              },
+              '*'
+            );
+          }
+        }}
+        className="select-all-button"
+      >
+        {selectedSpeakerUUIDs.length === speakers.length ? 'Deselect All Speakers' : 'Select All Speakers'}
+      </button>
+
       <div className="speakers-list">
         {speakers.map((speaker, idx) => {
           const speakerIP = extractIPAddress(speaker.location);
-          const isSelected = selectedSpeakerUUID === speaker.uuid;
-          const coordinatorSpeaker = speakers.find((s) => s.groupId === speaker.groupId && s.isCoordinator);
-          const coordinatorIP = coordinatorSpeaker ? extractIPAddress(coordinatorSpeaker.location) : null;
-          const coordinatorName = coordinatorSpeaker ? coordinatorSpeaker.zoneName : 'Group';
+          const isSelected = selectedSpeakerUUIDs.includes(speaker.uuid);
 
           return (
             <div key={idx} className={`speaker-item ${isSelected ? 'selected' : ''}`}>
@@ -201,30 +224,6 @@ const Favorites = () => {
                 >
                   {isSelected ? `Selected: ${speaker.zoneName}` : `Select Speaker: ${speaker.zoneName}`}
                 </button>
-                {!speaker.isCoordinator && (
-                  <button
-                    onClick={() => {
-                      if (coordinatorIP && speakerIP) {
-                        addSpeakerToGroup(speakerIP, coordinatorIP);
-                      }
-                    }}
-                    className="group-button"
-                  >
-                    Join {coordinatorName} Group
-                  </button>
-                )}
-                {speaker.isCoordinator && (
-                  <button
-                    onClick={() => {
-                      if (speakerIP) {
-                        leaveGroup(speakerIP);
-                      }
-                    }}
-                    className="group-button"
-                  >
-                    Leave Group
-                  </button>
-                )}
               </div>
             </div>
           );

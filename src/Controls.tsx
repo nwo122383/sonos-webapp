@@ -1,40 +1,27 @@
-import React, { useEffect, useState } from 'react';
+// src/components/Controls.tsx
+
+import React, { useState } from 'react';
+import './index.css';
 
 const Controls = () => {
-  const [playMode, setPlayMode] = useState('NORMAL');
+  const [shuffleState, setShuffleState] = useState(false);
+  const [repeatState, setRepeatState] = useState<'off' | 'all' | 'one'>('off');
 
-  useEffect(() => {
-    // Request current play mode
+  const sendControlCommand = (command: string) => {
     window.parent.postMessage(
       {
         type: 'IFRAME_ACTION',
         payload: {
           app: 'sonos-webapp',
-          type: 'get',
-          request: 'playMode',
+          type: 'set',
+          request: command,
         },
       },
       '*'
     );
+  };
 
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'playMode' && event.data.payload) {
-        setPlayMode(event.data.payload.playMode);
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
-  }, []);
-
-  const isShuffle = playMode.includes('SHUFFLE');
-  const isRepeatOne = playMode === 'REPEAT_ONE';
-  const isRepeatAll = playMode.includes('REPEAT') && !isRepeatOne;
-
-  const handleShuffle = () => {
+  const sendShuffleCommand = (state: boolean) => {
     window.parent.postMessage(
       {
         type: 'IFRAME_ACTION',
@@ -42,22 +29,14 @@ const Controls = () => {
           app: 'sonos-webapp',
           type: 'set',
           request: 'shuffle',
-          payload: { state: !isShuffle },
+          payload: { state },
         },
       },
       '*'
     );
   };
-
-  const handleRepeat = () => {
-    let newRepeatState: 'off' | 'all' | 'one';
-    if (isRepeatOne) {
-      newRepeatState = 'off';
-    } else if (isRepeatAll) {
-      newRepeatState = 'one';
-    } else {
-      newRepeatState = 'all';
-    }
+  
+  const sendRepeatCommand = (state: boolean) => {
     window.parent.postMessage(
       {
         type: 'IFRAME_ACTION',
@@ -65,7 +44,47 @@ const Controls = () => {
           app: 'sonos-webapp',
           type: 'set',
           request: 'repeat',
-          payload: { state: newRepeatState },
+          payload: { state },
+        },
+      },
+      '*'
+    );
+  };
+  const toggleShuffle = () => {
+    const newState = !shuffleState;
+    setShuffleState(newState);
+    window.parent.postMessage(
+      {
+        type: 'IFRAME_ACTION',
+        payload: {
+          app: 'sonos-webapp',
+          type: 'set',
+          request: 'shuffle',
+          payload: { state: newState },
+        },
+      },
+      '*'
+    );
+  };
+
+  const cycleRepeat = () => {
+    let newState: 'off' | 'all' | 'one';
+    if (repeatState === 'off') {
+      newState = 'all';
+    } else if (repeatState === 'all') {
+      newState = 'one';
+    } else {
+      newState = 'off';
+    }
+    setRepeatState(newState);
+    window.parent.postMessage(
+      {
+        type: 'IFRAME_ACTION',
+        payload: {
+          app: 'sonos-webapp',
+          type: 'set',
+          request: 'repeat',
+          payload: { state: newState },
         },
       },
       '*'
@@ -74,13 +93,12 @@ const Controls = () => {
 
   return (
     <div className="controls">
-      {/* Other controls like Play, Pause, Next, Previous */}
-      <button onClick={handleShuffle}>
-        Shuffle {isShuffle ? 'On' : 'Off'}
-      </button>
-      <button onClick={handleRepeat}>
-        Repeat {isRepeatOne ? 'One' : isRepeatAll ? 'All' : 'Off'}
-      </button>
+      <button onClick={() => sendControlCommand('previous')}>Previous</button>
+      <button onClick={() => sendControlCommand('play')}>Play</button>
+      <button onClick={() => sendControlCommand('pause')}>Pause</button>
+      <button onClick={() => sendControlCommand('next')}>Next</button>
+      <button onClick={toggleShuffle}>{shuffleState ? 'Disable Shuffle' : 'Enable Shuffle'}</button>
+      <button onClick={cycleRepeat}>Repeat: {repeatState}</button>
     </div>
   );
 };

@@ -24099,8 +24099,13 @@ var SonosHandler = class {
   deviceUUID = null;
   lastKnownSongData = null;
   pollingInterval = null;
-  selectedSpeakerUUID = null;
+  selectedSpeakerUUIDs = null;
   speakersList = {};
+  selectedVolumeSpeakers = [];
+  selectedPlaybackSpeakers = [];
+  // Initialize shuffle and repeat states
+  shuffleState = false;
+  repeatState = "off";
   // Implement getSpeakerIPByUUID
   async getSpeakerIPByUUID(uuid) {
     if (this.speakersList && this.speakersList[uuid]) {
@@ -24112,15 +24117,31 @@ var SonosHandler = class {
     }
     return null;
   }
+  // Select volume control speakers
+  async selectVolumeSpeakers(uuids) {
+    this.selectedVolumeSpeakers = uuids;
+    this.sendLog(`Selected volume speakers: ${uuids.join(", ")}`);
+  }
+  // Select playback control speakers
+  async selectPlaybackSpeakers(uuids) {
+    this.selectedPlaybackSpeakers = uuids;
+    this.sendLog(`Selected playback speakers: ${uuids.join(", ")}`);
+  }
   // Select speaker
-  async selectSpeaker(uuid) {
-    this.selectedSpeakerUUID = uuid;
-    const speakerIP = await this.getSpeakerIPByUUID(uuid);
-    if (speakerIP) {
-      this.deviceIP = speakerIP;
-      this.sendLog(`Selected speaker set to UUID: ${uuid}, IP: ${speakerIP}`);
+  async selectSpeakers(uuids) {
+    this.selectedSpeakerUUIDs = uuids;
+    this.sendLog(`Selected speakers: ${uuids.join(", ")}`);
+    if (uuids.length > 0) {
+      const firstSpeakerIP = await this.getSpeakerIPByUUID(uuids[0]);
+      if (firstSpeakerIP) {
+        this.deviceIP = firstSpeakerIP;
+        this.sendLog(`Device IP set to: ${this.deviceIP}`);
+      } else {
+        this.sendError(`IP not found for speaker UUID: ${uuids[0]}`);
+      }
     } else {
-      this.sendError(`Speaker with UUID ${uuid} not found.`);
+      this.deviceIP = null;
+      this.sendLog("No speakers selected. Device IP unset.");
     }
   }
   // Method to execute SOAP commands
@@ -24326,43 +24347,118 @@ var SonosHandler = class {
       throw error;
     }
   }
-  async shuffle(state) {
+  // Method to fast forward
+  async fastForward(seconds = 15) {
     try {
-      const currentPlayMode = await this.getCurrentPlayMode();
-      const isRepeat = currentPlayMode.includes("REPEAT");
-      let newPlayMode = "";
-      if (state) {
-        newPlayMode = isRepeat ? "SHUFFLE" : "SHUFFLE_NOREPEAT";
-      } else {
-        newPlayMode = isRepeat ? "REPEAT_ALL" : "NORMAL";
-      }
-      await this.execute("SetPlayMode", { NewPlayMode: newPlayMode });
-      this.sendLog(`Shuffle mode set to ${state ? "on" : "off"}`);
+      const currentPosition = await this.getCurrentPosition();
+      const newPosition = currentPosition + seconds;
+      await this.seekToTime(newPosition);
     } catch (error) {
-      this.sendError("Error setting shuffle mode: " + error.message);
+      this.sendError("Error fast forwarding: " + error.message);
     }
   }
-  // Set repeat mode
-  async repeat(state) {
+  // Method to rewind
+  async rewind(seconds = 15) {
     try {
-      const currentPlayMode = await this.getCurrentPlayMode();
-      const isShuffle = currentPlayMode.includes("SHUFFLE");
-      let newPlayMode = "";
-      switch (state) {
-        case "off":
-          newPlayMode = isShuffle ? "SHUFFLE_NOREPEAT" : "NORMAL";
-          break;
-        case "all":
-          newPlayMode = isShuffle ? "SHUFFLE" : "REPEAT_ALL";
-          break;
-        case "one":
-          newPlayMode = isShuffle ? "SHUFFLE" : "REPEAT_ONE";
-          break;
-      }
-      await this.execute("SetPlayMode", { NewPlayMode: newPlayMode });
-      this.sendLog(`Repeat mode set to ${state}`);
+      const currentPosition = await this.getCurrentPosition();
+      const newPosition = Math.max(currentPosition - seconds, 0);
+      await this.seekToTime(newPosition);
     } catch (error) {
-      this.sendError("Error setting repeat mode: " + error.message);
+      this.sendError("Error rewinding: " + error.message);
+    }
+  }
+  // Helper method to get current track position in seconds
+  async getCurrentPosition() {
+    const action = "GetPositionInfo";
+    const params = { InstanceID: 0 };
+    const result = await this.execute(action, params);
+    const relTime = result["RelTime"];
+    const timeParts = relTime.split(":").map(Number);
+    const seconds = timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2];
+    return seconds;
+  }
+  // Helper method to seek to a specific time in seconds
+  async seekToTime(positionInSeconds) {
+    const hours = Math.floor(positionInSeconds / 3600);
+    const minutes = Math.floor(positionInSeconds % 3600 / 60);
+    const seconds = positionInSeconds % 60;
+    const target = `${this.padZero(hours)}:${this.padZero(minutes)}:${this.padZero(seconds)}`;
+    await this.seek("REL_TIME", target);
+  }
+  // Helper method to pad numbers with leading zeros
+  padZero(value) {
+    return value.toString().padStart(2, "0");
+  }
+  // Method to set repeat mode
+  async repeat(state) {
+    let newPlayMode = "NORMAL";
+    switch (state) {
+      case "off":
+        newPlayMode = "NORMAL";
+        break;
+      case "all":
+        newPlayMode = "REPEAT_ALL";
+        break;
+      case "one":
+        newPlayMode = "REPEAT_ONE";
+        break;
+      default:
+        newPlayMode = "NORMAL";
+        break;
+    }
+    await this.execute("SetPlayMode", { NewPlayMode: newPlayMode });
+    this.sendLog(`Repeat mode set to ${state}`);
+  }
+  // Method to set shuffle mode
+  async shuffle(state) {
+    let newPlayMode = "NORMAL";
+    if (state) {
+      newPlayMode = "SHUFFLE_NOREPEAT";
+    } else {
+      newPlayMode = "NORMAL";
+    }
+    await this.execute("SetPlayMode", { NewPlayMode: newPlayMode });
+    this.sendLog(`Shuffle mode set to ${state ? "on" : "off"}`);
+  }
+  async updatePlayMode() {
+    let playMode = "NORMAL";
+    if (this.shuffleState && this.repeatState === "all") {
+      playMode = "SHUFFLE";
+    } else if (this.shuffleState && this.repeatState === "off") {
+      playMode = "SHUFFLE_NOREPEAT";
+    } else if (!this.shuffleState && this.repeatState === "all") {
+      playMode = "REPEAT_ALL";
+    } else if (!this.shuffleState && this.repeatState === "one") {
+      playMode = "REPEAT_ONE";
+    } else {
+      playMode = "NORMAL";
+    }
+    await this.setPlayMode(playMode);
+  }
+  async setPlayMode(playMode) {
+    const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/AVTransport/Control`;
+    const soapAction = `"urn:schemas-upnp-org:service:AVTransport:1#SetPlayMode"`;
+    const request = `<?xml version="1.0" encoding="utf-8"?>
+      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+              <u:SetPlayMode xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                  <InstanceID>0</InstanceID>
+                  <NewPlayMode>${playMode}</NewPlayMode>
+              </u:SetPlayMode>
+          </s:Body>
+      </s:Envelope>`;
+    try {
+      const response = await axios_default.post(url2, request, {
+        headers: {
+          "SOAPAction": soapAction,
+          "Content-Type": "text/xml; charset=utf-8"
+        }
+      });
+      this.sendLog(`Set play mode to ${playMode}`);
+    } catch (error) {
+      this.sendError("Error setting play mode: " + error.message);
+      throw error;
     }
   }
   // Fetch and send favorites to frontend
@@ -24439,6 +24535,29 @@ var SonosHandler = class {
       this.sendError(`Error fetching favorites: ${error.response ? error.response.data : error.message}`);
     }
   }
+  // Implement playFavoriteOnSpeakers
+  async playFavoriteOnSpeakers(uri, speakerUUIDs) {
+    if (speakerUUIDs.length === 0) {
+      throw new Error("No speakers selected to play the favorite.");
+    }
+    const coordinatorUUID = speakerUUIDs[0];
+    const coordinatorIP = await this.getSpeakerIPByUUID(coordinatorUUID);
+    if (!coordinatorIP) {
+      throw new Error("Coordinator speaker IP not found.");
+    }
+    for (let i = 1; i < speakerUUIDs.length; i++) {
+      const speakerUUID = speakerUUIDs[i];
+      const speakerIP = await this.getSpeakerIPByUUID(speakerUUID);
+      if (speakerIP) {
+        await this.addSpeakerToGroup(speakerIP, coordinatorIP);
+      }
+    }
+    this.deviceIP = coordinatorIP;
+    await this.playFavorite(uri);
+    if (!this.selectedSpeakerUUIDs.includes(coordinatorUUID)) {
+      this.selectedSpeakerUUIDs.unshift(coordinatorUUID);
+    }
+  }
   // Play favorite
   async playFavorite(uri, metaData = null) {
     try {
@@ -24506,25 +24625,110 @@ var SonosHandler = class {
       CurrentURIMetaData: metadata || ""
     });
   }
-  // Play
+  // Implement play
   async play() {
-    await this.execute("Play", { Speed: "1" });
-    this.startPollingTrackInfo(5e3);
+    const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/AVTransport/Control`;
+    const soapAction = `"urn:schemas-upnp-org:service:AVTransport:1#Play"`;
+    const request = `<?xml version="1.0" encoding="utf-8"?>
+      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+              <u:Play xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                  <InstanceID>0</InstanceID>
+                  <Speed>1</Speed>
+              </u:Play>
+          </s:Body>
+      </s:Envelope>`;
+    try {
+      await axios_default.post(url2, request, {
+        headers: {
+          "SOAPAction": soapAction,
+          "Content-Type": "text/xml; charset=utf-8"
+        }
+      });
+      this.sendLog("Playback started");
+    } catch (error) {
+      this.sendError("Error starting playback: " + error.message);
+      throw error;
+    }
   }
-  // Pause
+  // Implement pause
   async pause() {
-    await this.execute("Pause");
-    this.stopPollingTrackInfo();
+    const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/AVTransport/Control`;
+    const soapAction = `"urn:schemas-upnp-org:service:AVTransport:1#Pause"`;
+    const request = `<?xml version="1.0" encoding="utf-8"?>
+      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+              <u:Pause xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                  <InstanceID>0</InstanceID>
+              </u:Pause>
+          </s:Body>
+      </s:Envelope>`;
+    try {
+      await axios_default.post(url2, request, {
+        headers: {
+          "SOAPAction": soapAction,
+          "Content-Type": "text/xml; charset=utf-8"
+        }
+      });
+      this.sendLog("Playback paused");
+    } catch (error) {
+      this.sendError("Error pausing playback: " + error.message);
+      throw error;
+    }
   }
-  // Next track
+  // Implement next
   async next() {
-    await this.execute("Next");
-    await this.getTrackInfo();
+    const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/AVTransport/Control`;
+    const soapAction = `"urn:schemas-upnp-org:service:AVTransport:1#Next"`;
+    const request = `<?xml version="1.0" encoding="utf-8"?>
+      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+              <u:Next xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                  <InstanceID>0</InstanceID>
+              </u:Next>
+          </s:Body>
+      </s:Envelope>`;
+    try {
+      await axios_default.post(url2, request, {
+        headers: {
+          "SOAPAction": soapAction,
+          "Content-Type": "text/xml; charset=utf-8"
+        }
+      });
+      this.sendLog("Skipped to next track");
+    } catch (error) {
+      this.sendError("Error skipping to next track: " + error.message);
+      throw error;
+    }
   }
-  // Previous track
+  // Implement previous
   async previous() {
-    await this.execute("Previous");
-    await this.getTrackInfo();
+    const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/AVTransport/Control`;
+    const soapAction = `"urn:schemas-upnp-org:service:AVTransport:1#Previous"`;
+    const request = `<?xml version="1.0" encoding="utf-8"?>
+      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+              <u:Previous xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+                  <InstanceID>0</InstanceID>
+              </u:Previous>
+          </s:Body>
+      </s:Envelope>`;
+    try {
+      await axios_default.post(url2, request, {
+        headers: {
+          "SOAPAction": soapAction,
+          "Content-Type": "text/xml; charset=utf-8"
+        }
+      });
+      this.sendLog("Went back to previous track");
+    } catch (error) {
+      this.sendError("Error going back to previous track: " + error.message);
+      throw error;
+    }
   }
   // Start polling track info
   startPollingTrackInfo(interval = 5e3) {
@@ -24617,7 +24821,6 @@ var SonosHandler = class {
         this.sendLog("No valid track info received. Retaining last known track info.");
       }
     } catch (error) {
-      this.sendError("Error getting track info: " + error.message);
       import_deskthing_server.DeskThing.getInstance().sendDataToClient({
         app: "sonos-webapp",
         type: "song",
@@ -24630,90 +24833,100 @@ var SonosHandler = class {
       });
     }
   }
-  // Set volume
-  async setVolume(volume) {
-    const originalDeviceIP = this.deviceIP;
-    if (this.selectedSpeakerUUID) {
-      const speakerIP = await this.getSpeakerIPByUUID(this.selectedSpeakerUUID);
+  // Update methods to use selectedSpeakerUUIDs
+  async setVolume(volume, speakerUUIDs = []) {
+    const speakersToAdjust = speakerUUIDs.length > 0 ? speakerUUIDs : this.selectedVolumeSpeakers;
+    if (speakersToAdjust.length === 0) {
+      throw new Error("No volume speakers selected to adjust volume.");
+    }
+    for (const uuid of speakersToAdjust) {
+      const speakerIP = await this.getSpeakerIPByUUID(uuid);
       if (speakerIP) {
+        const originalDeviceIP = this.deviceIP;
         this.deviceIP = speakerIP;
-      }
-    }
-    const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
-    const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"`;
-    const request = `<?xml version="1.0" encoding="utf-8"?>
-      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-          <s:Body>
-              <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
-                  <InstanceID>0</InstanceID>
-                  <Channel>Master</Channel>
-                  <DesiredVolume>${volume}</DesiredVolume>
-              </u:SetVolume>
-          </s:Body>
-      </s:Envelope>`;
-    this.sendLog(`Setting volume to ${volume}`);
-    try {
-      const response = await axios_default({
-        method: "POST",
-        url: url2,
-        headers: {
-          "SOAPAction": soapAction,
-          "Content-Type": "text/xml; charset=utf-8"
-        },
-        data: request
-      });
-      import_deskthing_server.DeskThing.getInstance().sendDataToClient({
-        app: "sonos-webapp",
-        type: "volumeChange",
-        payload: { volume }
-      });
-      return response.data;
-    } catch (error) {
-      this.sendError(`Error setting volume: ${error.response ? error.response.data : error.message}`);
-      throw error;
-    } finally {
-      this.deviceIP = originalDeviceIP;
-    }
-  }
-  // Get current volume
-  async getCurrentVolume() {
-    const originalDeviceIP = this.deviceIP;
-    if (this.selectedSpeakerUUID) {
-      const speakerIP = await this.getSpeakerIPByUUID(this.selectedSpeakerUUID);
-      if (speakerIP) {
-        this.deviceIP = speakerIP;
-      }
-    }
-    const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
-    const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#GetVolume"`;
-    const request = `<?xml version="1.0" encoding="utf-8"?>
-      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-          <s:Body>
-              <u:GetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
-                  <InstanceID>0</InstanceID>
-                  <Channel>Master</Channel>
-              </u:GetVolume>
-          </s:Body>
-      </s:Envelope>`;
-    try {
-      const response = await axios_default.post(url2, request, {
-        headers: {
-          "SOAPAction": soapAction,
-          "Content-Type": "text/xml; charset=utf-8"
+        this.sendLog(`Setting volume to ${volume} on speaker ${uuid} (IP: ${speakerIP})`);
+        const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
+        const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"`;
+        const request = `<?xml version="1.0" encoding="utf-8"?>
+          <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                      s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+              <s:Body>
+                  <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                      <InstanceID>0</InstanceID>
+                      <Channel>Master</Channel>
+                      <DesiredVolume>${volume}</DesiredVolume>
+                  </u:SetVolume>
+              </s:Body>
+          </s:Envelope>`;
+        try {
+          await axios_default({
+            method: "POST",
+            url: url2,
+            headers: {
+              "SOAPAction": soapAction,
+              "Content-Type": "text/xml; charset=utf-8"
+            },
+            data: request
+          });
+          this.sendLog(`Successfully set volume on speaker ${uuid}`);
+        } catch (error) {
+          this.sendError(`Error setting volume on speaker ${uuid}: ${error.message}`);
+        } finally {
+          this.deviceIP = originalDeviceIP;
         }
-      });
-      const parser = new import_xml2js.default.Parser({ explicitArray: false });
-      const result = await parser.parseStringPromise(response.data);
-      const volume = parseInt(result["s:Envelope"]["s:Body"]["u:GetVolumeResponse"]["CurrentVolume"], 10);
-      this.sendLog("Fetched volume from Sonos: " + volume);
+      } else {
+        this.sendError(`Speaker IP not found for UUID: ${uuid}`);
+      }
+    }
+    import_deskthing_server.DeskThing.getInstance().sendDataToClient({
+      app: "sonos-webapp",
+      type: "volumeChange",
+      payload: { volume }
+    });
+  }
+  // Get current volume from one of the selected speakers
+  async getCurrentVolume(speakerUUIDs) {
+    if (speakerUUIDs.length === 0) {
+      throw new Error("No speakers selected to get volume.");
+    }
+    const uuid = speakerUUIDs[0];
+    const speakerIP = await this.getSpeakerIPByUUID(uuid);
+    if (speakerIP) {
+      const originalDeviceIP = this.deviceIP;
+      this.deviceIP = speakerIP;
+      const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
+      const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#GetVolume"`;
+      const request = `<?xml version="1.0" encoding="utf-8"?>
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                    s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+            <s:Body>
+                <u:GetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                    <InstanceID>0</InstanceID>
+                    <Channel>Master</Channel>
+                </u:GetVolume>
+            </s:Body>
+        </s:Envelope>`;
+      let volume;
+      try {
+        const response = await axios_default.post(url2, request, {
+          headers: {
+            "SOAPAction": soapAction,
+            "Content-Type": "text/xml; charset=utf-8"
+          }
+        });
+        const parser = new import_xml2js.default.Parser({ explicitArray: false });
+        const result = await parser.parseStringPromise(response.data);
+        volume = parseInt(result["s:Envelope"]["s:Body"]["u:GetVolumeResponse"]["CurrentVolume"], 10);
+        this.sendLog(`Fetched volume from speaker ${uuid}: ${volume}`);
+      } catch (error) {
+        this.sendError(`Error getting volume from speaker ${uuid}: ${error.message}`);
+        throw error;
+      } finally {
+        this.deviceIP = originalDeviceIP;
+      }
       return volume;
-    } catch (error) {
-      this.sendError("Error getting current volume: " + error.message);
-      throw error;
-    } finally {
-      this.deviceIP = originalDeviceIP;
+    } else {
+      throw new Error(`Speaker IP not found for UUID: ${uuid}`);
     }
   }
   // Define the extractIPAddress method
@@ -24767,6 +24980,7 @@ var start = async () => {
     await sonos.getTrackInfo();
     await sonos.getFavorites();
     await sonos.getZoneGroupState();
+    sonos.startPollingTrackInfo();
   } else {
     promptForIP();
   }
@@ -24787,6 +25001,7 @@ var promptForIP = () => {
         sonos.getTrackInfo();
         sonos.getFavorites();
         sonos.getZoneGroupState();
+        sonos.startPollingTrackInfo();
       } else {
         DeskThing.sendError("No IP address provided!");
       }
@@ -24813,26 +25028,55 @@ var handleGet = async (data) => {
       await sonos.getFavorites();
       break;
     case "volume":
-      try {
-        const currentVolume = await sonos.getCurrentVolume();
-        DeskThing.sendDataToClient({
-          app: "sonos-webapp",
-          type: "currentVolume",
-          payload: { volume: currentVolume }
-        });
-        console.log("Fetched current volume:", currentVolume);
-      } catch (error) {
-        DeskThing.sendError(`Error fetching volume: ${error.message}`);
+      if (data.payload && data.payload.speakerUUIDs) {
+        const speakerUUIDs = data.payload.speakerUUIDs;
+        try {
+          const volume = await sonos.getCurrentVolume(speakerUUIDs);
+          DeskThing.sendDataToClient({
+            app: "sonos-webapp",
+            type: "currentVolume",
+            payload: { volume, uuid: speakerUUIDs[0] }
+          });
+        } catch (error) {
+          DeskThing.sendError(`Error fetching volume: ${error.message}`);
+        }
+      } else {
+        DeskThing.sendError("No speaker UUIDs provided for volume request");
       }
+      break;
+    case "selectedVolumeSpeakers":
+      DeskThing.sendDataToClient({
+        app: "sonos-webapp",
+        type: "selectedVolumeSpeakers",
+        payload: { uuids: sonos.selectedVolumeSpeakers }
+      });
+      break;
+    case "selectedPlaybackSpeakers":
+      DeskThing.sendDataToClient({
+        app: "sonos-webapp",
+        type: "selectedPlaybackSpeakers",
+        payload: { uuids: sonos.selectedPlaybackSpeakers }
+      });
+      break;
+    case "speakersList":
+      const speakersArray = Object.entries(sonos.speakersList).map(([uuid, info]) => ({
+        uuid,
+        ...info
+      }));
+      DeskThing.sendDataToClient({
+        app: "sonos-webapp",
+        type: "speakersList",
+        payload: speakersArray
+      });
       break;
     case "zoneGroupState":
       await sonos.getZoneGroupState();
       break;
-    case "selectedSpeaker":
+    case "selectedSpeakers":
       DeskThing.sendDataToClient({
         app: "sonos-webapp",
-        type: "selectedSpeaker",
-        payload: { uuid: sonos.selectedSpeakerUUID }
+        type: "selectedSpeakers",
+        payload: { uuids: sonos.selectedSpeakerUUIDs }
       });
       break;
     default:
@@ -24870,35 +25114,47 @@ var handleSet = async (data) => {
       break;
     case "playFavorite":
       if (data.payload && data.payload.uri) {
-        await sonos.playFavorite(data.payload.uri);
+        const speakerUUIDs = data.payload.speakerUUIDs || sonos.selectedSpeakerUUIDs;
+        await sonos.playFavoriteOnSpeakers(data.payload.uri, speakerUUIDs);
       } else {
         DeskThing.sendError("No URI provided for playFavorite");
       }
       break;
     case "volumeChange":
+      console.log("Received volumeChange request:", data.payload);
       if (data.payload && data.payload.volume !== void 0) {
         const newVolume = data.payload.volume;
-        await sonos.setVolume(newVolume);
-        DeskThing.sendDataToClient({
-          app: "sonos-webapp",
-          type: "volumeChange",
-          payload: { volume: newVolume }
-        });
+        const speakerUUIDs = data.payload.speakerUUIDs || sonos.selectedVolumeSpeakers;
+        await sonos.setVolume(newVolume, speakerUUIDs);
       } else {
         DeskThing.sendError("No volume provided for volumeChange");
       }
       break;
     case "shuffle":
-      await sonos.shuffle(data.payload.state);
+      await sonos.shuffle(data.payload);
       break;
     case "repeat":
-      await sonos.repeat(data.payload.state);
+      await sonos.repeat(data.payload);
       break;
-    case "selectSpeaker":
-      if (data.payload && data.payload.uuid) {
-        await sonos.selectSpeaker(data.payload.uuid);
+    case "selectedVolumeSpeakers":
+      DeskThing.sendDataToClient({
+        app: "sonos-webapp",
+        type: "selectedVolumeSpeakers",
+        payload: { uuids: sonos.selectedVolumeSpeakers }
+      });
+      break;
+    case "selectPlaybackSpeakers":
+      if (data.payload && data.payload.uuids) {
+        await sonos.selectPlaybackSpeakers(data.payload.uuids);
       } else {
-        DeskThing.sendError("No UUID provided for selectSpeaker");
+        DeskThing.sendError("No UUIDs provided for selectPlaybackSpeakers");
+      }
+      break;
+    case "selectSpeakers":
+      if (data.payload && data.payload.uuids) {
+        await sonos.selectSpeakers(data.payload.uuids);
+      } else {
+        DeskThing.sendError("No UUIDs provided for selectSpeakers");
       }
       break;
     default:

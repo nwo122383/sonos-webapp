@@ -1,24 +1,22 @@
 // src/components/VolumeBar.tsx
 
 import React, { useEffect, useState } from 'react';
-import './index.css';
+import './VolumeBar.css';
 
 const VolumeBar = () => {
   const [volume, setVolume] = useState<number | undefined>(undefined);
   const [visible, setVisible] = useState(false);
-  const [selectedSpeakerUUID, setSelectedSpeakerUUID] = useState<string | null>(null);
+  const [selectedVolumeSpeakers, setSelectedVolumeSpeakers] = useState<string[]>([]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'currentVolume' && event.data.payload.volume !== undefined) {
         setVolume(event.data.payload.volume);
         setVisible(true);
-      } else if (event.data.type === 'selectedSpeaker' && event.data.payload.uuid) {
-        setSelectedSpeakerUUID(event.data.payload.uuid);
-        // Fetch volume for the selected speaker
-        fetchCurrentVolume();
+      } else if (event.data.type === 'selectedVolumeSpeakers' && event.data.payload.uuids) {
+        setSelectedVolumeSpeakers(event.data.payload.uuids);
+        fetchCurrentVolume(event.data.payload.uuids);
       } else if (event.data.type === 'volumeChange' && event.data.payload.volume !== undefined) {
-        // Update the volume when it changes
         setVolume(event.data.payload.volume);
         setVisible(true);
       }
@@ -26,29 +24,33 @@ const VolumeBar = () => {
 
     window.addEventListener('message', handleMessage);
 
-    // Initial fetch of the selected speaker and volume
-    fetchSelectedSpeaker();
+    fetchSelectedVolumeSpeakers();
 
     return () => {
       window.removeEventListener('message', handleMessage);
     };
   }, []);
 
-  const fetchSelectedSpeaker = () => {
+  const fetchSelectedVolumeSpeakers = () => {
     window.parent.postMessage(
       {
         type: 'IFRAME_ACTION',
         payload: {
           app: 'sonos-webapp',
           type: 'get',
-          request: 'selectedSpeaker',
+          request: 'selectedVolumeSpeakers',
         },
       },
       '*'
     );
   };
 
-  const fetchCurrentVolume = () => {
+  const fetchCurrentVolume = (speakerUUIDs: string[]) => {
+    if (speakerUUIDs.length === 0) {
+      return;
+    }
+
+    // For simplicity, fetch volume from the first selected speaker
     window.parent.postMessage(
       {
         type: 'IFRAME_ACTION',
@@ -56,6 +58,7 @@ const VolumeBar = () => {
           app: 'sonos-webapp',
           type: 'get',
           request: 'volume',
+          payload: { speakerUUIDs },
         },
       },
       '*'
@@ -74,45 +77,48 @@ const VolumeBar = () => {
 
   useEffect(() => {
     const handleWheel = (event: WheelEvent) => {
-      event.preventDefault(); // Prevent default scrolling
-      event.stopPropagation(); // Stop propagation
+      event.preventDefault();
+      event.stopPropagation();
 
-      if (typeof volume === 'number') {
-        let volumeChange = 0;
-        if (event.deltaX !== 0) {
-          volumeChange = event.deltaX > 0 ? 5 : -5;
-        } else if (event.deltaY !== 0) {
-          volumeChange = event.deltaY < 0 ? 5 : -5;
-        }
+      if (selectedVolumeSpeakers.length === 0) {
+        return;
+      }
 
-        if (volumeChange !== 0) {
-          const newVolume = Math.min(100, Math.max(0, volume + volumeChange));
+      let volumeChange = 0;
+      if (event.deltaX < 0) {
+        volumeChange = -5;
+      } else if (event.deltaX > 0) {
+        volumeChange = 5;
+      }
 
-          console.log('Setting new volume:', newVolume);
-          setVolume(newVolume);
-          setVisible(true); // Show the volume bar when volume changes
-          window.parent.postMessage(
-            {
-              type: 'IFRAME_ACTION',
+      if (volumeChange !== 0) {
+        const newVolume = Math.min(100, Math.max(0, (volume || 0) + volumeChange));
+
+        setVolume(newVolume);
+        setVisible(true);
+
+        window.parent.postMessage(
+          {
+            type: 'IFRAME_ACTION',
+            payload: {
+              app: 'sonos-webapp',
+              type: 'set',
+              request: 'volumeChange',
               payload: {
-                app: 'sonos-webapp',
-                type: 'set',
-                request: 'volumeChange',
-                payload: { volume: newVolume },
+                volume: newVolume,
+                speakerUUIDs: selectedVolumeSpeakers,
               },
             },
-            '*'
-          );
-        }
-      } else {
-        console.log('Volume not initialized yet.');
+          },
+          '*'
+        );
       }
     };
 
     window.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => window.removeEventListener('wheel', handleWheel);
-  }, [volume]);
+  }, [volume, selectedVolumeSpeakers]);
 
   return (
     <div id="volume-bar" style={{ display: visible ? 'block' : 'none' }}>

@@ -13,13 +13,13 @@ const start = async () => {
   DeskThing.on('get', handleGet);
   DeskThing.on('set', handleSet);
 
-  // Fetch initial data
   const data = await DeskThing.getData();
   if (data.Sonos_IP) {
     sonos.deviceIP = data.Sonos_IP;
     await sonos.getTrackInfo();
     await sonos.getFavorites();
     await sonos.getZoneGroupState();
+    sonos.startPollingTrackInfo();
   } else {
     promptForIP();
   }
@@ -41,6 +41,7 @@ const promptForIP = () => {
         sonos.getTrackInfo();
         sonos.getFavorites();
         sonos.getZoneGroupState();
+        sonos.startPollingTrackInfo();
       } else {
         DeskThing.sendError('No IP address provided!');
       }
@@ -67,29 +68,60 @@ const handleGet = async (data: any) => {
     case 'favorites':
       await sonos.getFavorites();
       break;
-    case 'volume':
-      try {
-        const currentVolume = await sonos.getCurrentVolume();
-        DeskThing.sendDataToClient({
-          app: 'sonos-webapp',
-          type: 'currentVolume',
-          payload: { volume: currentVolume },
-        });
-        console.log('Fetched current volume:', currentVolume);
-      } catch (error) {
-        DeskThing.sendError(`Error fetching volume: ${error.message}`);
-      }
+      case 'volume':
+        if (data.payload && data.payload.speakerUUIDs) {
+          const speakerUUIDs = data.payload.speakerUUIDs;
+          try {
+            const volume = await sonos.getCurrentVolume(speakerUUIDs);
+            // Send the volume back to the frontend
+            DeskThing.sendDataToClient({
+              app: 'sonos-webapp',
+              type: 'currentVolume',
+              payload: { volume, uuid: speakerUUIDs[0] },
+            });
+          } catch (error: any) {
+            DeskThing.sendError(`Error fetching volume: ${error.message}`);
+          }
+        } else {
+          DeskThing.sendError('No speaker UUIDs provided for volume request');
+        }
+        break;
+      case 'selectedVolumeSpeakers':
+      DeskThing.sendDataToClient({
+        app: 'sonos-webapp',
+        type: 'selectedVolumeSpeakers',
+        payload: { uuids: sonos.selectedVolumeSpeakers },
+      });
       break;
+    case 'selectedPlaybackSpeakers':
+      DeskThing.sendDataToClient({
+        app: 'sonos-webapp',
+        type: 'selectedPlaybackSpeakers',
+        payload: { uuids: sonos.selectedPlaybackSpeakers },
+      });
+      break;
+    case 'speakersList':
+      const speakersArray = Object.entries(sonos.speakersList).map(([uuid, info]) => ({
+        uuid,
+        ...info,
+      }));
+      DeskThing.sendDataToClient({
+        app: 'sonos-webapp',
+        type: 'speakersList',
+        payload: speakersArray,
+      });
+      break;
+
     case 'zoneGroupState':
       await sonos.getZoneGroupState();
       break;
-    case 'selectedSpeaker':
-      DeskThing.sendDataToClient({
-        app: 'sonos-webapp',
-        type: 'selectedSpeaker',
-        payload: { uuid: sonos.selectedSpeakerUUID },
-      });
-      break;
+      case 'selectedSpeakers':
+        DeskThing.sendDataToClient({
+          app: 'sonos-webapp',
+          type: 'selectedSpeakers',
+          payload: { uuids: sonos.selectedSpeakerUUIDs },
+        });
+        break;
     default:
       DeskThing.sendError(`Unknown request: ${data.request}`);
       break;
@@ -126,35 +158,47 @@ const handleSet = async (data: any) => {
       break;
     case 'playFavorite':
       if (data.payload && data.payload.uri) {
-        await sonos.playFavorite(data.payload.uri);
+        const speakerUUIDs = data.payload.speakerUUIDs || sonos.selectedSpeakerUUIDs;
+        await sonos.playFavoriteOnSpeakers(data.payload.uri, speakerUUIDs);
       } else {
         DeskThing.sendError('No URI provided for playFavorite');
       }
       break;
-    case 'volumeChange':
-      if (data.payload && data.payload.volume !== undefined) {
-        const newVolume = data.payload.volume;
-        await sonos.setVolume(newVolume);
+      case 'volumeChange':
+        console.log('Received volumeChange request:', data.payload);
+        if (data.payload && data.payload.volume !== undefined) {
+          const newVolume = data.payload.volume;
+          const speakerUUIDs = data.payload.speakerUUIDs || sonos.selectedVolumeSpeakers;
+          await sonos.setVolume(newVolume, speakerUUIDs);
+        } else {
+          DeskThing.sendError('No volume provided for volumeChange');
+        }
+        break;
+        case 'shuffle':
+        await sonos.shuffle(data.payload);
+        break;
+      case 'repeat':
+     await sonos.repeat(data.payload);
+    break;
+          case 'selectedVolumeSpeakers':
         DeskThing.sendDataToClient({
           app: 'sonos-webapp',
-          type: 'volumeChange',
-          payload: { volume: newVolume },
+          type: 'selectedVolumeSpeakers',
+          payload: { uuids: sonos.selectedVolumeSpeakers },
         });
+        break;
+    case 'selectPlaybackSpeakers':
+      if (data.payload && data.payload.uuids) {
+        await sonos.selectPlaybackSpeakers(data.payload.uuids);
       } else {
-        DeskThing.sendError('No volume provided for volumeChange');
+        DeskThing.sendError('No UUIDs provided for selectPlaybackSpeakers');
       }
       break;
-    case 'shuffle':
-      await sonos.shuffle(data.payload.state);
-      break;
-    case 'repeat':
-      await sonos.repeat(data.payload.state);
-      break;
-    case 'selectSpeaker':
-      if (data.payload && data.payload.uuid) {
-        await sonos.selectSpeaker(data.payload.uuid);
+    case 'selectSpeakers':
+      if (data.payload && data.payload.uuids) {
+        await sonos.selectSpeakers(data.payload.uuids);
       } else {
-        DeskThing.sendError('No UUID provided for selectSpeaker');
+        DeskThing.sendError('No UUIDs provided for selectSpeakers');
       }
       break;
     default:
