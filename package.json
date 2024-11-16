@@ -5,6 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
+    "dev-ip": "node dev-ip.js",
     "dev": "vite",
     "build": "vite build && npm run build-server",
     "build-server": "esbuild server/index.ts --bundle --platform=node --outdir=dist/server",

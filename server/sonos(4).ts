@@ -2,21 +2,6 @@ import axios from 'axios';
 import { DeskThing as DK, Settings } from 'deskthing-server';
 import xml2js from 'xml2js';
 
-// Shared singleton to store selected speaker information
-
-class SelectedSpeakerStore {
-  private static instance: SelectedSpeakerStore;
-  public selectedSpeakerIP: string | null = null;
-
-  private constructor() {}
-
-  public static getInstance(): SelectedSpeakerStore {
-      if (!SelectedSpeakerStore.instance) {
-          SelectedSpeakerStore.instance = new SelectedSpeakerStore();
-      }
-      return SelectedSpeakerStore.instance;
-  }
-}
 export type SongData = {
   album: string | null;
   artist: string | null;
@@ -727,7 +712,20 @@ async leaveGroup(speakerIP: string) {
       throw error;
     }
   }
-
+  async setVolumeChange(change) {
+    try {
+        const currentVolume = await this.getCurrentVolume();
+        const newVolume = Math.min(100, Math.max(0, currentVolume + change));
+        await this.setVolume(newVolume);
+        DK.getInstance().sendDataToClient({ app: 'sonos-webapp', type: 'volume', payload: newVolume });
+    } catch (error) {
+        console.error('Error changing volume:', error);
+    }
+}
+  async volume(newVol: number) {
+    const url = `$http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control/${newVol}`
+    return this.makeRequest('put', url)
+  }
   // Implement pause
   async pause() {
     const url = `http://${this.deviceIP}:${this.port}/MediaRenderer/AVTransport/Control`;
@@ -940,92 +938,66 @@ async leaveGroup(speakerIP: string) {
     }
   }
 
+   // Update methods to use selectedSpeakerUUIDs
+   async setVolume(volume: number, speakerUUIDs: string[] = []) {
+    const speakersToAdjust = speakerUUIDs.length > 0 ? speakerUUIDs : this.selectedVolumeSpeakers;
+    if (speakersToAdjust.length === 0) {
+      throw new Error('No volume speakers selected to adjust volume.');
+    }
   
-
-  async setVolume(volume: number, speakerUUIDs: string[] = []) {
-    const speakerStore = SelectedSpeakerStore.getInstance();
-    let speakersToAdjust = speakerUUIDs;
-
-    // If no specific speakers are provided, use the previously selected speaker
-    if (speakersToAdjust.length === 0) {
-        if (this.selectedVolumeSpeakers && this.selectedVolumeSpeakers.length > 0) {
-            speakersToAdjust = this.selectedVolumeSpeakers;
-        } else if (speakerStore.selectedSpeakerIP) {
-            // If no selected speakers are available, use the stored speaker IP
-            speakersToAdjust = [speakerStore.selectedSpeakerIP];
-        }
-    }
-
-    // If still no speakers are selected, throw an error
-    if (speakersToAdjust.length === 0) {
-        throw new Error('No speakers available to adjust volume.');
-    }
-
     for (const uuid of speakersToAdjust) {
-        let speakerIP: string | null = null;
-
-        // Check if the uuid is actually an IP address
-        if (/^\d+\.\d+\.\d+\.\d+$/.test(uuid)) {
-            speakerIP = uuid;
-        } else {
-            speakerIP = await this.getSpeakerIPByUUID(uuid);
+      const speakerIP = await this.getSpeakerIPByUUID(uuid);
+      if (speakerIP) {
+        const originalDeviceIP = this.deviceIP;
+        this.deviceIP = speakerIP;
+  
+        this.sendLog(`Setting volume to ${volume} on speaker ${uuid} (IP: ${speakerIP})`);
+  
+        const url = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
+        const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"`;
+        const request = `<?xml version="1.0" encoding="utf-8"?>
+          <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                      s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+              <s:Body>
+                  <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                      <InstanceID>0</InstanceID>
+                      <Channel>Master</Channel>
+                      <DesiredVolume>${volume}</DesiredVolume>
+                  </u:SetVolume>
+              </s:Body>
+          </s:Envelope>`;
+  
+        try {
+          await axios({
+            method: 'POST',
+            url: url,
+            headers: {
+              'SOAPAction': soapAction,
+              'Content-Type': 'text/xml; charset=utf-8',
+            },
+            data: request,
+          });
+  
+          this.sendLog(`Successfully set volume on speaker ${uuid}`);
+        } catch (error: any) {
+          this.sendError(`Error setting volume on speaker ${uuid}: ${error.message}`);
+        } finally {
+          this.deviceIP = originalDeviceIP;
         }
-
-        if (speakerIP) {
-            const originalDeviceIP = this.deviceIP;
-            this.deviceIP = speakerIP;
-
-            this.sendLog(`Setting volume to ${volume} on speaker ${uuid} (IP: ${speakerIP})`);
-
-            const url = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
-            const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"`;
-            const request = `<?xml version="1.0" encoding="utf-8"?>
-              <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-                          s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-                  <s:Body>
-                      <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
-                          <InstanceID>0</InstanceID>
-                          <Channel>Master</Channel>
-                          <DesiredVolume>${volume}</DesiredVolume>
-                      </u:SetVolume>
-                  </s:Body>
-              </s:Envelope>`;
-
-            try {
-                await axios({
-                    method: 'POST',
-                    url: url,
-                    headers: {
-                        'SOAPAction': soapAction,
-                        'Content-Type': 'text/xml; charset=utf-8',
-                    },
-                    data: request,
-                });
-
-                this.sendLog(`Successfully set volume on speaker ${uuid}`);
-            } catch (error: any) {
-                this.sendError(`Error setting volume on speaker ${uuid}: ${error.message}`);
-            } finally {
-                this.deviceIP = originalDeviceIP;
-            }
-
-            // Store the selected speaker IP in the singleton for use outside the app
-            speakerStore.selectedSpeakerIP = speakerIP;
-        } else {
-            this.sendError(`Speaker IP not found for UUID: ${uuid}`);
-        }
+      } else {
+        this.sendError(`Speaker IP not found for UUID: ${uuid}`);
+      }
     }
-
+  
+    
     // Send volume change back to frontend
     DK.getInstance().sendDataToClient({
-        app: 'sonos-webapp',
-        type: 'volumeChange',
-        payload: { volume },
+      app: 'sonos-webapp',
+      type: 'volumeChange',
+      payload: { volume },
     });
-}
-
-
-
+    
+  }
 
 
 

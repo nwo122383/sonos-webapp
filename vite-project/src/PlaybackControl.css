@@ -18,7 +18,7 @@
   }
   
   .speaker-item.selected {
-    background-color: #e6f7ff6b;
+    background-color: #e6f7ff;
   }
   
   .speaker-info {
@@ -35,7 +35,7 @@
   }
   
   .select-speaker-button.selected {
-    background-color: #00000089;
+    background-color: #1890ff;
     color: #fff;
   }
   

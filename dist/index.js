@@ -24089,6 +24089,18 @@ var {
 // server/sonos.ts
 var import_deskthing_server = __toESM(require_dist(), 1);
 var import_xml2js = __toESM(require_xml2js(), 1);
+var SelectedSpeakerStore = class _SelectedSpeakerStore {
+  static instance;
+  selectedSpeakerIP = null;
+  constructor() {
+  }
+  static getInstance() {
+    if (!_SelectedSpeakerStore.instance) {
+      _SelectedSpeakerStore.instance = new _SelectedSpeakerStore();
+    }
+    return _SelectedSpeakerStore.instance;
+  }
+};
 var SonosHandler = class {
   deviceIP = null;
   port = 1400;
@@ -24833,14 +24845,26 @@ var SonosHandler = class {
       });
     }
   }
-  // Update methods to use selectedSpeakerUUIDs
   async setVolume(volume, speakerUUIDs = []) {
-    const speakersToAdjust = speakerUUIDs.length > 0 ? speakerUUIDs : this.selectedVolumeSpeakers;
+    const speakerStore = SelectedSpeakerStore.getInstance();
+    let speakersToAdjust = speakerUUIDs;
     if (speakersToAdjust.length === 0) {
-      throw new Error("No volume speakers selected to adjust volume.");
+      if (this.selectedVolumeSpeakers && this.selectedVolumeSpeakers.length > 0) {
+        speakersToAdjust = this.selectedVolumeSpeakers;
+      } else if (speakerStore.selectedSpeakerIP) {
+        speakersToAdjust = [speakerStore.selectedSpeakerIP];
+      }
+    }
+    if (speakersToAdjust.length === 0) {
+      throw new Error("No speakers available to adjust volume.");
     }
     for (const uuid of speakersToAdjust) {
-      const speakerIP = await this.getSpeakerIPByUUID(uuid);
+      let speakerIP = null;
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(uuid)) {
+        speakerIP = uuid;
+      } else {
+        speakerIP = await this.getSpeakerIPByUUID(uuid);
+      }
       if (speakerIP) {
         const originalDeviceIP = this.deviceIP;
         this.deviceIP = speakerIP;
@@ -24848,16 +24872,16 @@ var SonosHandler = class {
         const url2 = `http://${this.deviceIP}:${this.port}/MediaRenderer/RenderingControl/Control`;
         const soapAction = `"urn:schemas-upnp-org:service:RenderingControl:1#SetVolume"`;
         const request = `<?xml version="1.0" encoding="utf-8"?>
-          <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
-                      s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-              <s:Body>
-                  <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
-                      <InstanceID>0</InstanceID>
-                      <Channel>Master</Channel>
-                      <DesiredVolume>${volume}</DesiredVolume>
-                  </u:SetVolume>
-              </s:Body>
-          </s:Envelope>`;
+              <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                          s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+                  <s:Body>
+                      <u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
+                          <InstanceID>0</InstanceID>
+                          <Channel>Master</Channel>
+                          <DesiredVolume>${volume}</DesiredVolume>
+                      </u:SetVolume>
+                  </s:Body>
+              </s:Envelope>`;
         try {
           await axios_default({
             method: "POST",
@@ -24874,6 +24898,7 @@ var SonosHandler = class {
         } finally {
           this.deviceIP = originalDeviceIP;
         }
+        speakerStore.selectedSpeakerIP = speakerIP;
       } else {
         this.sendError(`Speaker IP not found for UUID: ${uuid}`);
       }
@@ -25119,6 +25144,14 @@ var handleSet = async (data) => {
       } else {
         DeskThing.sendError("No URI provided for playFavorite");
       }
+      break;
+    case "volume":
+      await sonos.setVolume(data.payload);
+      console.log("Set current volume:", data.payload);
+      DeskThing.sendMessageToClients({
+        type: "currentVolume",
+        payload: { volume: data.payload }
+      });
       break;
     case "volumeChange":
       console.log("Received volumeChange request:", data.payload);

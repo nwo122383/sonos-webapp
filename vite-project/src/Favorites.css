@@ -3,13 +3,13 @@
 body {
     margin: 0;
     font-family: Arial, sans-serif;
-    color: #ffffff; /* Darker text color for better contrast */
+    color: #333; /* Darker text color for better contrast */
   }
   
   .app-container {
     width: 100%;
     height: 100%;
-    background-color: rgb(0, 0, 0); /* Lighter gray background */
+    background-color: #f0f0f0; /* Lighter gray background */
     overflow: hidden;
   }
   
@@ -75,7 +75,7 @@ body {
 }
   
   h2 {
-    color: #ffffff; /* Darker text color for better contrast */
+    color: #333; /* Darker text color for better contrast */
     font-size: 18px;
     margin-bottom: 10px;
     margin-top: 0;
@@ -117,8 +117,8 @@ body {
   }
   
   .select-speaker-button.selected {
-    background-color: #00000039;
-    color: rgba(255, 255, 255, 0.589);
+    background-color: #4caf50;
+    color: white;
   }
   
   .select-speaker-button {

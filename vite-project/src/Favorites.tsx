@@ -230,7 +230,7 @@ const Favorites = () => {
         })}
       </div>
 
-      <h2>Will load here</h2>
+      <h2>Favorites</h2>
       <div className="favorites-grid">
         {favorites.map((favorite) => (
           <div

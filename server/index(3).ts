@@ -1,7 +1,7 @@
 // src/index.ts
 
 import SonosHandler from './sonos';
-import { DeskThing as DK } from 'deskthing-server';
+import { DeskThing as DK, IncomingData } from 'deskthing-server';
 const DeskThing = DK.getInstance();
 export { DeskThing };
 
@@ -68,24 +68,14 @@ const handleGet = async (data: any) => {
     case 'favorites':
       await sonos.getFavorites();
       break;
-      case 'volume':
-        if (data.payload && data.payload.speakerUUIDs) {
-          const speakerUUIDs = data.payload.speakerUUIDs;
-          try {
-            const volume = await sonos.getCurrentVolume(speakerUUIDs);
-            // Send the volume back to the frontend
-            DeskThing.sendDataToClient({
-              app: 'sonos-webapp',
-              type: 'currentVolume',
-              payload: { volume, uuid: speakerUUIDs[0] },
-            });
-          } catch (error: any) {
-            DeskThing.sendError(`Error fetching volume: ${error.message}`);
-          }
-        } else {
-          DeskThing.sendError('No speaker UUIDs provided for volume request');
-        }
-        break;
+      case 'volume':  // This handles getting the current volume when the app starts
+      await sonos.setVolume(data.payload);  // Assuming you have a `setVolume` function
+      console.log('Set current volume:', data.payload);
+      DeskThing.sendMessageToClients({
+          type: 'currentVolume',
+          payload: { volume: data.payload}
+      });
+      break;
       case 'selectedVolumeSpeakers':
       DeskThing.sendDataToClient({
         app: 'sonos-webapp',
@@ -164,14 +154,14 @@ const handleSet = async (data: any) => {
         DeskThing.sendError('No URI provided for playFavorite');
       }
       break;
-    case 'volume':  // This handles getting the current volume when the app starts
-      await sonos.setVolume(data.payload);  // Assuming you have a `setVolume` function
-      console.log('Set current volume:', data.payload);
-      DeskThing.sendMessageToClients({
-          type: 'currentVolume',
-          payload: { volume: data.payload}
-      });
-      break;
+      case 'volume':  // This handles getting the current volume when the app starts
+          await sonos.setVolume(data.payload);  // Assuming you have a `setVolume` function
+          console.log('Set current volume:', data.payload);
+          DeskThing.sendMessageToClients({
+              type: 'currentVolume',
+              payload: { volume: data.payload}
+          });
+          break;
       case 'volumeChange':
         console.log('Received volumeChange request:', data.payload);
         if (data.payload && data.payload.volume !== undefined) {
