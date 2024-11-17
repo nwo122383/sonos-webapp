@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import './VolumeControl.css';
 
@@ -169,6 +168,29 @@ const VolumeControl = () => {
     }
   };
 
+  const adjustVolume = (uuid: string, delta: number) => {
+    const currentVolume = volumeLevels[uuid] || 0;
+    const newVolume = Math.min(100, Math.max(0, currentVolume + delta));
+
+    setVolumeLevels((prev) => ({ ...prev, [uuid]: newVolume }));
+
+    window.parent.postMessage(
+      {
+        type: 'IFRAME_ACTION',
+        payload: {
+          app: 'sonos-webapp',
+          type: 'set',
+          request: 'volumeChange',
+          payload: {
+            volume: newVolume,
+            speakerUUIDs: [uuid],
+          },
+        },
+      },
+      '*'
+    );
+  };
+
   return (
     <div
       id="volume-control"
@@ -186,19 +208,32 @@ const VolumeControl = () => {
                 <strong>{speaker.zoneName}</strong>
               </div>
               <div className="speaker-controls">
-                <button
-                  onClick={() => selectVolumeSpeaker(speaker.uuid)}
-                  className={`select-speaker-button ${isSelected ? 'selected' : ''}`}
-                >
-                  {isSelected ? 'Selected' : 'Select'}
-                </button>
-                {isSelected && (
-                  <div className="volume-display">
-                    Volume:{' '}
-                    {volumeLevels[speaker.uuid] !== undefined ? volumeLevels[speaker.uuid] : '...'}%
-                  </div>
-                )}
-              </div>
+  <button
+    onClick={() => adjustVolume(speaker.uuid, -5)}
+    className="volume-minus-button"
+  >
+    -
+  </button>
+  <button
+    onClick={() => selectVolumeSpeaker(speaker.uuid)}
+    className={`select-speaker-button ${isSelected ? 'selected' : ''}`}
+  >
+    {isSelected ? 'Selected' : 'Select'}
+  </button>
+  <button
+    onClick={() => adjustVolume(speaker.uuid, 5)}
+    className="volume-plus-button"
+  >
+    +
+  </button>
+  {isSelected && (
+    <div className="volume-display">
+      Volume:{' '}
+      {volumeLevels[speaker.uuid] !== undefined ? volumeLevels[speaker.uuid] : '...'}%
+    </div>
+  )}
+</div>
+               
             </div>
           );
         })}

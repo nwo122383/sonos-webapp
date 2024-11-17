@@ -14,12 +14,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@rollup/plugin-commonjs": "^28.0.1",
+    "@rollup/plugin-node-resolve": "^15.3.0",
     "axios": "^1.7.5",
     "deskthing-client": "latest",
     "deskthing-server": "latest",
     "domparser": "^0.1.1",
+    "postcss": "^8.4.49",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "react-swipeable": "^7.0.2",
+    "react-touch-events": "^3.0.0",
     "xml2js": "^0.6.2",
     "xmldom": "^0.6.0"
   },
@@ -30,12 +36,12 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-legacy": "^5.4.2",
     "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.19",
+    "autoprefixer": "^10.4.20",
     "esbuild": "^0.19.2",
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.9",
-    "tailwindcss": "^3.4.10",
+    "tailwindcss": "^3.4.15",
     "typescript": "^5.5.4",
     "typescript-eslint": "^8.0.1",
     "vite": "^5.4.1"
