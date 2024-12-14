@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import DeskThing, { SocketData } from 'deskthing-client';
 import './VolumeControl.css';
 
 interface Speaker {
@@ -21,45 +22,32 @@ const VolumeControl = () => {
   }, []);
 
   const fetchSpeakers = () => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'get',
           request: 'speakersList',
         },
-      },
-      '*'
+     
     );
   };
 
   const fetchSelectedVolumeSpeakers = () => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'get',
           request: 'selectedVolumeSpeakers',
         },
-      },
-      '*'
-    );
+       );
   };
 
   const fetchCurrentVolume = (uuid: string) => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'get',
           request: 'volume',
           payload: { speakerUUIDs: [uuid] },
         },
-      },
-      '*'
+     
     );
   };
 
@@ -105,17 +93,13 @@ const VolumeControl = () => {
       }
 
       // Notify backend of selected volume speakers
-      window.parent.postMessage(
-        {
-          type: 'IFRAME_ACTION',
-          payload: {
+      DeskThing.send({
             app: 'sonos-webapp',
             type: 'set',
             request: 'selectVolumeSpeakers',
             payload: { uuids: newSelected },
           },
-        },
-        '*'
+        
       );
 
       // Fetch the current volume for the newly selected speaker
@@ -149,10 +133,7 @@ const VolumeControl = () => {
 
         setVolumeLevels((prev) => ({ ...prev, [uuid]: newVolume }));
 
-        window.parent.postMessage(
-          {
-            type: 'IFRAME_ACTION',
-            payload: {
+        DeskThing.send({
               app: 'sonos-webapp',
               type: 'set',
               request: 'volumeChange',
@@ -161,8 +142,7 @@ const VolumeControl = () => {
                 speakerUUIDs: [uuid],
               },
             },
-          },
-          '*'
+          
         );
       });
     }
@@ -174,10 +154,7 @@ const VolumeControl = () => {
 
     setVolumeLevels((prev) => ({ ...prev, [uuid]: newVolume }));
 
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'set',
           request: 'volumeChange',
@@ -186,8 +163,7 @@ const VolumeControl = () => {
             speakerUUIDs: [uuid],
           },
         },
-      },
-      '*'
+     
     );
   };
 
