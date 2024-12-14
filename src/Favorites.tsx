@@ -1,10 +1,8 @@
 // src/components/Favorites.tsx
 
 import React, { useEffect, useState } from 'react';
+import DeskThing, { SocketData } from 'deskthing-client';
 import './Favorites.css';
-import { DeskThing as DK } from 'deskthing-server';
-const DeskThing = DK.getInstance();
-export { DeskThing };
 
 interface Favorite {
   uri: string;
@@ -24,30 +22,21 @@ const Favorites = () => {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [selectedSpeakerUUIDs, setSelectedSpeakerUUIDs] = useState<string[]>([]);
-
+  
   useEffect(() => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'get',
           request: 'favorites',
         },
-      },
-      '*'
-    );
+          );
 
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'get',
           request: 'zoneGroupState',
         },
-      },
-      '*'
+      
     );
 
     const handleFavorite = (socketData: SocketData) => {
@@ -96,8 +85,13 @@ const Favorites = () => {
     const removeFavoritesListener = DeskThing.on('favorites', handleFavorite)
     const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState)
     const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker)
-  
-
+    return () => {
+      removeFavoritesListener();
+      removeZoneGroupStateListener();
+      removeSelectedSpeakersListener();
+    };
+  }
+)
   const extractIPAddress = (url: string) => {
     try {
       const parsedURL = new URL(url);
@@ -117,17 +111,12 @@ const Favorites = () => {
         newSelected = [...prevSelected, uuid];
       }
 
-      window.parent.postMessage(
-        {
-          type: 'IFRAME_ACTION',
-          payload: {
+     DeskThing.send({
             app: 'sonos-webapp',
             type: 'set',
             request: 'selectSpeakers',
             payload: { uuids: newSelected },
           },
-        },
-        '*'
       );
 
       return newSelected;
@@ -140,10 +129,7 @@ const Favorites = () => {
       return;
     }
 
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'set',
           request: 'playFavorite',
@@ -152,10 +138,7 @@ const Favorites = () => {
             speakerUUIDs: selectedSpeakerUUIDs,
           },
         },
-      },
-      '*'
     );
-  };
 
   return (
     <div id="favorites-container">
@@ -166,37 +149,28 @@ const Favorites = () => {
           if (selectedSpeakerUUIDs.length === speakers.length) {
             setSelectedSpeakerUUIDs([]);
 
-            window.parent.postMessage(
-              {
-                type: 'IFRAME_ACTION',
-                payload: {
+            DeskThing.send({
                   app: 'sonos-webapp',
                   type: 'set',
                   request: 'selectSpeakers',
                   payload: { uuids: [] },
                 },
-              },
-              '*'
+              
             );
           } else {
             const allUUIDs = speakers.map((speaker) => speaker.uuid);
             setSelectedSpeakerUUIDs(allUUIDs);
 
-            window.parent.postMessage(
-              {
-                type: 'IFRAME_ACTION',
-                payload: {
+            DeskThing.send({
                   app: 'sonos-webapp',
                   type: 'set',
                   request: 'selectSpeakers',
                   payload: { uuids: allUUIDs },
                 },
-              },
-              '*'
             );
-          }
+        
         }}
-        className="select-all-button"
+      }className="select-all-button"
       >
         {selectedSpeakerUUIDs.length === speakers.length ? 'Deselect All Speakers' : 'Select All Speakers'}
       </button>
@@ -240,5 +214,5 @@ const Favorites = () => {
     </div>
   );
 };
-
+}
 export default Favorites;
