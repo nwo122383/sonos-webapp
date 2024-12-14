@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { DeskThing as DK, Settings } from 'deskthing-server';
+import { DeskThing as DK, SongData } from 'deskthing-server';
 import xml2js from 'xml2js';
 
 // Shared singleton to store selected speaker information
@@ -17,28 +17,6 @@ class SelectedSpeakerStore {
       return SelectedSpeakerStore.instance;
   }
 }
-export type SongData = {
-  album: string | null;
-  artist: string | null;
-  playlist: string | null;
-  playlist_id: string | null;
-  track_name: string;
-  shuffle_state: boolean | null;
-  repeat_state: 'off' | 'all' | 'track';
-  is_playing: boolean;
-  can_fast_forward: boolean;
-  can_skip: boolean;
-  can_like: boolean;
-  can_change_volume: boolean;
-  can_set_output: boolean;
-  track_duration: number | null;
-  track_progress: number | null;
-  volume: number;
-  thumbnail: string | null;
-  device: string | null;
-  id: string | null;
-  device_id: string | null;
-};
 
 class SonosHandler {
   deviceIP: string | null = null;
@@ -50,7 +28,7 @@ class SonosHandler {
   deviceUUID: string | null = null;
   lastKnownSongData: any = null;
   pollingInterval: any = null;
-  selectedSpeakerUUIDs: string | null = null;
+  selectedSpeakerUUIDs: string[] | null = null;
   speakersList: { [uuid: string]: { ip: string; zoneName: string } } = {};
   selectedVolumeSpeakers: string[] = [];
   selectedPlaybackSpeakers: string[] = [];
@@ -606,7 +584,7 @@ async leaveGroup(speakerIP: string) {
     await this.playFavorite(uri);
 
     // Update the selectedSpeakerUUIDs to include the coordinator
-      if (!this.selectedSpeakerUUIDs.includes(coordinatorUUID)) {
+      if (this.selectedSpeakerUUIDs && !this.selectedSpeakerUUIDs.includes(coordinatorUUID)) {
         this.selectedSpeakerUUIDs.unshift(coordinatorUUID);
       }
     }
@@ -1088,7 +1066,11 @@ extractIPAddress(url: string): string | null {
     const parsedURL = new URL(url);
     return parsedURL.hostname;
   } catch (error) {
-    this.sendError('Error parsing URL to extract IP address: ' + error.message);
+    if (error instanceof Error) {
+      this.sendError('Error parsing URL to extract IP address: ' + error.message);
+    } else {
+      this.sendError('Error parsing URL to extract IP address: ' + String(error));
+    }
     return null;
   }
 }

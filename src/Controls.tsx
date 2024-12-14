@@ -2,69 +2,47 @@
 
 import React, { useState } from 'react';
 import './index.css';
+import DeskThing from 'deskthing-client';
 
 const Controls = () => {
   const [shuffleState, setShuffleState] = useState(false);
   const [repeatState, setRepeatState] = useState<'off' | 'all' | 'one'>('off');
 
   const sendControlCommand = (command: string) => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'set',
-          request: command,
-        },
-      },
-      '*'
-    );
+    // DeskThing.send does the same thing as window.parent.postMessage()
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'set',
+      request: command,
+    })
   };
 
   const sendShuffleCommand = (state: boolean) => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'set',
-          request: 'shuffle',
-          payload: { state },
-        },
-      },
-      '*'
-    );
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'set',
+      request: 'shuffle',
+      payload: { state },
+    })
   };
   
   const sendRepeatCommand = (state: boolean) => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'set',
-          request: 'repeat',
-          payload: { state },
-        },
-      },
-      '*'
-    );
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'set',
+      request: 'repeat',
+      payload: { state },
+    })
   };
   const toggleShuffle = () => {
     const newState = !shuffleState;
     setShuffleState(newState);
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'set',
-          request: 'shuffle',
-          payload: { state: newState },
-        },
-      },
-      '*'
-    );
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'set',
+      request: 'shuffle',
+      payload: { state: newState },
+    })
   };
 
   const cycleRepeat = () => {
@@ -77,18 +55,12 @@ const Controls = () => {
       newState = 'off';
     }
     setRepeatState(newState);
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'set',
-          request: 'repeat',
-          payload: { state: newState },
-        },
-      },
-      '*'
-    );
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'set',
+      request: 'repeat',
+      payload: { state: newState },
+    })
   };
 
   return (

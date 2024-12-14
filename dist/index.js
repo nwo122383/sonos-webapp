@@ -34,7 +34,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var require_delayed_stream = __commonJS({
   "node_modules/delayed-stream/lib/delayed_stream.js"(exports2, module2) {
     var Stream = require("stream").Stream;
-    var util3 = require("util");
+    var util2 = require("util");
     module2.exports = DelayedStream;
     function DelayedStream() {
       this.source = null;
@@ -45,7 +45,7 @@ var require_delayed_stream = __commonJS({
       this._released = false;
       this._bufferedEvents = [];
     }
-    util3.inherits(DelayedStream, Stream);
+    util2.inherits(DelayedStream, Stream);
     DelayedStream.create = function(source, options) {
       var delayedStream = new this();
       options = options || {};
@@ -124,7 +124,7 @@ var require_delayed_stream = __commonJS({
 // node_modules/combined-stream/lib/combined_stream.js
 var require_combined_stream = __commonJS({
   "node_modules/combined-stream/lib/combined_stream.js"(exports2, module2) {
-    var util3 = require("util");
+    var util2 = require("util");
     var Stream = require("stream").Stream;
     var DelayedStream = require_delayed_stream();
     module2.exports = CombinedStream;
@@ -140,7 +140,7 @@ var require_combined_stream = __commonJS({
       this._insideLoop = false;
       this._pendingNext = false;
     }
-    util3.inherits(CombinedStream, Stream);
+    util2.inherits(CombinedStream, Stream);
     CombinedStream.create = function(options) {
       var combinedStream = new this();
       options = options || {};
@@ -9140,7 +9140,7 @@ var require_populate = __commonJS({
 var require_form_data = __commonJS({
   "node_modules/form-data/lib/form_data.js"(exports2, module2) {
     var CombinedStream = require_combined_stream();
-    var util3 = require("util");
+    var util2 = require("util");
     var path = require("path");
     var http2 = require("http");
     var https2 = require("https");
@@ -9151,7 +9151,7 @@ var require_form_data = __commonJS({
     var asynckit = require_asynckit();
     var populate = require_populate();
     module2.exports = FormData3;
-    util3.inherits(FormData3, CombinedStream);
+    util2.inherits(FormData3, CombinedStream);
     function FormData3(options) {
       if (!(this instanceof FormData3)) {
         return new FormData3(options);
@@ -9176,7 +9176,7 @@ var require_form_data = __commonJS({
       if (typeof value == "number") {
         value = "" + value;
       }
-      if (Array.isArray(value)) {
+      if (util2.isArray(value)) {
         this._error(new Error("Arrays are not supported."));
         return;
       }
@@ -9467,7 +9467,7 @@ var require_proxy_from_env = __commonJS({
     var stringEndsWith = String.prototype.endsWith || function(s) {
       return s.length <= this.length && this.indexOf(s, this.length - s.length) !== -1;
     };
-    function getProxyForUrl(url2) {
+    function getProxyForUrl2(url2) {
       var parsedUrl = typeof url2 === "string" ? parseUrl(url2) : url2 || {};
       var proto = parsedUrl.protocol;
       var hostname = parsedUrl.host;
@@ -9517,7 +9517,7 @@ var require_proxy_from_env = __commonJS({
     function getEnv(key) {
       return process.env[key.toLowerCase()] || process.env[key.toUpperCase()] || "";
     }
-    exports2.getProxyForUrl = getProxyForUrl;
+    exports2.getProxyForUrl = getProxyForUrl2;
   }
 });
 
@@ -9740,63 +9740,49 @@ var require_common = __commonJS({
         createDebug.namespaces = namespaces;
         createDebug.names = [];
         createDebug.skips = [];
-        const split = (typeof namespaces === "string" ? namespaces : "").trim().replace(" ", ",").split(",").filter(Boolean);
-        for (const ns of split) {
-          if (ns[0] === "-") {
-            createDebug.skips.push(ns.slice(1));
+        let i;
+        const split = (typeof namespaces === "string" ? namespaces : "").split(/[\s,]+/);
+        const len = split.length;
+        for (i = 0; i < len; i++) {
+          if (!split[i]) {
+            continue;
+          }
+          namespaces = split[i].replace(/\*/g, ".*?");
+          if (namespaces[0] === "-") {
+            createDebug.skips.push(new RegExp("^" + namespaces.slice(1) + "$"));
           } else {
-            createDebug.names.push(ns);
+            createDebug.names.push(new RegExp("^" + namespaces + "$"));
           }
         }
-      }
-      function matchesTemplate(search, template) {
-        let searchIndex = 0;
-        let templateIndex = 0;
-        let starIndex = -1;
-        let matchIndex = 0;
-        while (searchIndex < search.length) {
-          if (templateIndex < template.length && (template[templateIndex] === search[searchIndex] || template[templateIndex] === "*")) {
-            if (template[templateIndex] === "*") {
-              starIndex = templateIndex;
-              matchIndex = searchIndex;
-              templateIndex++;
-            } else {
-              searchIndex++;
-              templateIndex++;
-            }
-          } else if (starIndex !== -1) {
-            templateIndex = starIndex + 1;
-            matchIndex++;
-            searchIndex = matchIndex;
-          } else {
-            return false;
-          }
-        }
-        while (templateIndex < template.length && template[templateIndex] === "*") {
-          templateIndex++;
-        }
-        return templateIndex === template.length;
       }
       function disable() {
         const namespaces = [
-          ...createDebug.names,
-          ...createDebug.skips.map((namespace) => "-" + namespace)
+          ...createDebug.names.map(toNamespace),
+          ...createDebug.skips.map(toNamespace).map((namespace) => "-" + namespace)
         ].join(",");
         createDebug.enable("");
         return namespaces;
       }
       function enabled(name) {
-        for (const skip of createDebug.skips) {
-          if (matchesTemplate(name, skip)) {
+        if (name[name.length - 1] === "*") {
+          return true;
+        }
+        let i;
+        let len;
+        for (i = 0, len = createDebug.skips.length; i < len; i++) {
+          if (createDebug.skips[i].test(name)) {
             return false;
           }
         }
-        for (const ns of createDebug.names) {
-          if (matchesTemplate(name, ns)) {
+        for (i = 0, len = createDebug.names.length; i < len; i++) {
+          if (createDebug.names[i].test(name)) {
             return true;
           }
         }
         return false;
+      }
+      function toNamespace(regexp) {
+        return regexp.toString().substring(2, regexp.toString().length - 2).replace(/\.\*\?$/, "*");
       }
       function coerce(val) {
         if (val instanceof Error) {
@@ -9988,11 +9974,12 @@ var require_browser = __commonJS({
 var require_has_flag = __commonJS({
   "node_modules/has-flag/index.js"(exports2, module2) {
     "use strict";
-    module2.exports = (flag, argv = process.argv) => {
+    module2.exports = (flag, argv) => {
+      argv = argv || process.argv;
       const prefix = flag.startsWith("-") ? "" : flag.length === 1 ? "-" : "--";
-      const position = argv.indexOf(prefix + flag);
-      const terminatorPosition = argv.indexOf("--");
-      return position !== -1 && (terminatorPosition === -1 || position < terminatorPosition);
+      const pos = argv.indexOf(prefix + flag);
+      const terminatorPos = argv.indexOf("--");
+      return pos !== -1 && (terminatorPos === -1 ? true : pos < terminatorPos);
     };
   }
 });
@@ -10002,23 +9989,16 @@ var require_supports_color = __commonJS({
   "node_modules/supports-color/index.js"(exports2, module2) {
     "use strict";
     var os = require("os");
-    var tty = require("tty");
     var hasFlag = require_has_flag();
-    var { env } = process;
+    var env = process.env;
     var forceColor;
-    if (hasFlag("no-color") || hasFlag("no-colors") || hasFlag("color=false") || hasFlag("color=never")) {
-      forceColor = 0;
+    if (hasFlag("no-color") || hasFlag("no-colors") || hasFlag("color=false")) {
+      forceColor = false;
     } else if (hasFlag("color") || hasFlag("colors") || hasFlag("color=true") || hasFlag("color=always")) {
-      forceColor = 1;
+      forceColor = true;
     }
     if ("FORCE_COLOR" in env) {
-      if (env.FORCE_COLOR === "true") {
-        forceColor = 1;
-      } else if (env.FORCE_COLOR === "false") {
-        forceColor = 0;
-      } else {
-        forceColor = env.FORCE_COLOR.length === 0 ? 1 : Math.min(parseInt(env.FORCE_COLOR, 10), 3);
-      }
+      forceColor = env.FORCE_COLOR.length === 0 || parseInt(env.FORCE_COLOR, 10) !== 0;
     }
     function translateLevel(level) {
       if (level === 0) {
@@ -10031,8 +10011,8 @@ var require_supports_color = __commonJS({
         has16m: level >= 3
       };
     }
-    function supportsColor(haveStream, streamIsTTY) {
-      if (forceColor === 0) {
+    function supportsColor(stream4) {
+      if (forceColor === false) {
         return 0;
       }
       if (hasFlag("color=16m") || hasFlag("color=full") || hasFlag("color=truecolor")) {
@@ -10041,22 +10021,19 @@ var require_supports_color = __commonJS({
       if (hasFlag("color=256")) {
         return 2;
       }
-      if (haveStream && !streamIsTTY && forceColor === void 0) {
+      if (stream4 && !stream4.isTTY && forceColor !== true) {
         return 0;
       }
-      const min = forceColor || 0;
-      if (env.TERM === "dumb") {
-        return min;
-      }
+      const min = forceColor ? 1 : 0;
       if (process.platform === "win32") {
         const osRelease = os.release().split(".");
-        if (Number(osRelease[0]) >= 10 && Number(osRelease[2]) >= 10586) {
+        if (Number(process.versions.node.split(".")[0]) >= 8 && Number(osRelease[0]) >= 10 && Number(osRelease[2]) >= 10586) {
           return Number(osRelease[2]) >= 14931 ? 3 : 2;
         }
         return 1;
       }
       if ("CI" in env) {
-        if (["TRAVIS", "CIRCLECI", "APPVEYOR", "GITLAB_CI", "GITHUB_ACTIONS", "BUILDKITE"].some((sign) => sign in env) || env.CI_NAME === "codeship") {
+        if (["TRAVIS", "CIRCLECI", "APPVEYOR", "GITLAB_CI"].some((sign) => sign in env) || env.CI_NAME === "codeship") {
           return 1;
         }
         return min;
@@ -10085,16 +10062,19 @@ var require_supports_color = __commonJS({
       if ("COLORTERM" in env) {
         return 1;
       }
+      if (env.TERM === "dumb") {
+        return min;
+      }
       return min;
     }
     function getSupportLevel(stream4) {
-      const level = supportsColor(stream4, stream4 && stream4.isTTY);
+      const level = supportsColor(stream4);
       return translateLevel(level);
     }
     module2.exports = {
       supportsColor: getSupportLevel,
-      stdout: translateLevel(supportsColor(true, tty.isatty(1))),
-      stderr: translateLevel(supportsColor(true, tty.isatty(2)))
+      stdout: getSupportLevel(process.stdout),
+      stderr: getSupportLevel(process.stderr)
     };
   }
 });
@@ -10103,14 +10083,14 @@ var require_supports_color = __commonJS({
 var require_node = __commonJS({
   "node_modules/debug/src/node.js"(exports2, module2) {
     var tty = require("tty");
-    var util3 = require("util");
+    var util2 = require("util");
     exports2.init = init;
     exports2.log = log;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
     exports2.load = load;
     exports2.useColors = useColors;
-    exports2.destroy = util3.deprecate(
+    exports2.destroy = util2.deprecate(
       () => {
       },
       "Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`."
@@ -10241,7 +10221,7 @@ var require_node = __commonJS({
       return (/* @__PURE__ */ new Date()).toISOString() + " ";
     }
     function log(...args) {
-      return process.stderr.write(util3.formatWithOptions(exports2.inspectOpts, ...args) + "\n");
+      return process.stderr.write(util2.formatWithOptions(exports2.inspectOpts, ...args) + "\n");
     }
     function save(namespaces) {
       if (namespaces) {
@@ -10264,11 +10244,11 @@ var require_node = __commonJS({
     var { formatters } = module2.exports;
     formatters.o = function(v) {
       this.inspectOpts.colors = this.useColors;
-      return util3.inspect(v, this.inspectOpts).split("\n").map((str) => str.trim()).join(" ");
+      return util2.inspect(v, this.inspectOpts).split("\n").map((str) => str.trim()).join(" ");
     };
     formatters.O = function(v) {
       this.inspectOpts.colors = this.useColors;
-      return util3.inspect(v, this.inspectOpts);
+      return util2.inspect(v, this.inspectOpts);
     };
   }
 });
@@ -10806,10 +10786,10 @@ var require_axios = __commonJS({
     "use strict";
     var FormData$1 = require_form_data();
     var url2 = require("url");
-    var proxyFromEnv2 = require_proxy_from_env();
+    var proxyFromEnv = require_proxy_from_env();
     var http2 = require("http");
     var https2 = require("https");
-    var util3 = require("util");
+    var util2 = require("util");
     var followRedirects2 = require_follow_redirects();
     var zlib2 = require("zlib");
     var stream4 = require("stream");
@@ -10819,10 +10799,9 @@ var require_axios = __commonJS({
     }
     var FormData__default = /* @__PURE__ */ _interopDefaultLegacy(FormData$1);
     var url__default = /* @__PURE__ */ _interopDefaultLegacy(url2);
-    var proxyFromEnv__default = /* @__PURE__ */ _interopDefaultLegacy(proxyFromEnv2);
     var http__default = /* @__PURE__ */ _interopDefaultLegacy(http2);
     var https__default = /* @__PURE__ */ _interopDefaultLegacy(https2);
-    var util__default = /* @__PURE__ */ _interopDefaultLegacy(util3);
+    var util__default = /* @__PURE__ */ _interopDefaultLegacy(util2);
     var followRedirects__default = /* @__PURE__ */ _interopDefaultLegacy(followRedirects2);
     var zlib__default = /* @__PURE__ */ _interopDefaultLegacy(zlib2);
     var stream__default = /* @__PURE__ */ _interopDefaultLegacy(stream4);
@@ -11436,11 +11415,6 @@ var require_axios = __commonJS({
         return url3;
       }
       const _encode = options && options.encode || encode3;
-      if (utils$1.isFunction(options)) {
-        options = {
-          serialize: options
-        };
-      }
       const serializeFn = options && options.serialize;
       let serializedParams;
       if (serializeFn) {
@@ -12033,7 +12007,7 @@ var require_axios = __commonJS({
       }
       return requestedURL;
     }
-    var VERSION3 = "1.7.9";
+    var VERSION3 = "1.7.7";
     function parseProtocol2(url3) {
       const match = /^([-+\w]{1,25})(:?\/\/|:)/.exec(url3);
       return match && match[1] || "";
@@ -12191,7 +12165,7 @@ var require_axios = __commonJS({
     };
     var readBlob$1 = readBlob2;
     var BOUNDARY_ALPHABET2 = utils$1.ALPHABET.ALPHA_DIGIT + "-_";
-    var textEncoder2 = typeof TextEncoder === "function" ? new TextEncoder() : new util__default["default"].TextEncoder();
+    var textEncoder2 = new util2.TextEncoder();
     var CRLF2 = "\r\n";
     var CRLF_BYTES2 = textEncoder2.encode(CRLF2);
     var CRLF_BYTES_COUNT2 = 2;
@@ -12426,7 +12400,7 @@ var require_axios = __commonJS({
     function setProxy2(options, configProxy, location) {
       let proxy = configProxy;
       if (!proxy && proxy !== false) {
-        const proxyUrl = proxyFromEnv__default["default"].getProxyForUrl(location);
+        const proxyUrl = proxyFromEnv.getProxyForUrl(location);
         if (proxyUrl) {
           proxy = new URL(proxyUrl);
         }
@@ -12601,7 +12575,7 @@ var require_axios = __commonJS({
             } catch (e) {
             }
           }
-        } else if (utils$1.isBlob(data) || utils$1.isFile(data)) {
+        } else if (utils$1.isBlob(data)) {
           data.size && headers.setContentType(data.type || "application/octet-stream");
           headers.setContentLength(data.size || 0);
           data = stream__default["default"].Readable.from(readBlob$1(data));
@@ -12805,7 +12779,7 @@ var require_axios = __commonJS({
                 return;
               }
               const err = new AxiosError3(
-                "stream has been aborted",
+                "maxContentLength size of " + config.maxContentLength + " exceeded",
                 AxiosError3.ERR_BAD_RESPONSE,
                 config,
                 lastRequest
@@ -12900,13 +12874,45 @@ var require_axios = __commonJS({
         }
       });
     };
-    var isURLSameOrigin = platform.hasStandardBrowserEnv ? /* @__PURE__ */ ((origin3, isMSIE) => (url3) => {
-      url3 = new URL(url3, platform.origin);
-      return origin3.protocol === url3.protocol && origin3.host === url3.host && (isMSIE || origin3.port === url3.port);
-    })(
-      new URL(platform.origin),
-      platform.navigator && /(msie|trident)/i.test(platform.navigator.userAgent)
-    ) : () => true;
+    var isURLSameOrigin = platform.hasStandardBrowserEnv ? (
+      // Standard browser envs have full support of the APIs needed to test
+      // whether the request URL is of the same origin as current location.
+      function standardBrowserEnv2() {
+        const msie = platform.navigator && /(msie|trident)/i.test(platform.navigator.userAgent);
+        const urlParsingNode = document.createElement("a");
+        let originURL;
+        function resolveURL(url3) {
+          let href = url3;
+          if (msie) {
+            urlParsingNode.setAttribute("href", href);
+            href = urlParsingNode.href;
+          }
+          urlParsingNode.setAttribute("href", href);
+          return {
+            href: urlParsingNode.href,
+            protocol: urlParsingNode.protocol ? urlParsingNode.protocol.replace(/:$/, "") : "",
+            host: urlParsingNode.host,
+            search: urlParsingNode.search ? urlParsingNode.search.replace(/^\?/, "") : "",
+            hash: urlParsingNode.hash ? urlParsingNode.hash.replace(/^#/, "") : "",
+            hostname: urlParsingNode.hostname,
+            port: urlParsingNode.port,
+            pathname: urlParsingNode.pathname.charAt(0) === "/" ? urlParsingNode.pathname : "/" + urlParsingNode.pathname
+          };
+        }
+        originURL = resolveURL(window.location.href);
+        return function isURLSameOrigin2(requestURL) {
+          const parsed = utils$1.isString(requestURL) ? resolveURL(requestURL) : requestURL;
+          return parsed.protocol === originURL.protocol && parsed.host === originURL.host;
+        };
+      }()
+    ) : (
+      // Non standard browser envs (web workers, react-native) lack needed support.
+      /* @__PURE__ */ function nonStandardBrowserEnv2() {
+        return function isURLSameOrigin2() {
+          return true;
+        };
+      }()
+    );
     var cookies = platform.hasStandardBrowserEnv ? (
       // Standard browser envs support document.cookie
       {
@@ -12942,7 +12948,7 @@ var require_axios = __commonJS({
     function mergeConfig3(config1, config2) {
       config2 = config2 || {};
       const config = {};
-      function getMergedValue(target, source, prop, caseless) {
+      function getMergedValue(target, source, caseless) {
         if (utils$1.isPlainObject(target) && utils$1.isPlainObject(source)) {
           return utils$1.merge.call({ caseless }, target, source);
         } else if (utils$1.isPlainObject(source)) {
@@ -12952,11 +12958,11 @@ var require_axios = __commonJS({
         }
         return source;
       }
-      function mergeDeepProperties(a, b, prop, caseless) {
+      function mergeDeepProperties(a, b, caseless) {
         if (!utils$1.isUndefined(b)) {
-          return getMergedValue(a, b, prop, caseless);
+          return getMergedValue(a, b, caseless);
         } else if (!utils$1.isUndefined(a)) {
-          return getMergedValue(void 0, a, prop, caseless);
+          return getMergedValue(void 0, a, caseless);
         }
       }
       function valueFromConfig2(a, b) {
@@ -13007,7 +13013,7 @@ var require_axios = __commonJS({
         socketPath: defaultToConfig2,
         responseEncoding: defaultToConfig2,
         validateStatus: mergeDirectKeys,
-        headers: (a, b, prop) => mergeDeepProperties(headersToObject2(a), headersToObject2(b), prop, true)
+        headers: (a, b) => mergeDeepProperties(headersToObject2(a), headersToObject2(b), true)
       };
       utils$1.forEach(Object.keys(Object.assign({}, config1, config2)), function computeConfigValue(prop) {
         const merge3 = mergeMap[prop] || mergeDeepProperties;
@@ -13568,12 +13574,6 @@ var require_axios = __commonJS({
         return validator2 ? validator2(value, opt, opts) : true;
       };
     };
-    validators$1.spelling = function spelling2(correctSpelling) {
-      return (value, opt) => {
-        console.warn(`${opt} is likely a misspelling of ${correctSpelling}`);
-        return true;
-      };
-    };
     function assertOptions2(options, schema, allowUnknown) {
       if (typeof options !== "object") {
         throw new AxiosError3("options must be an object", AxiosError3.ERR_BAD_OPTION_VALUE);
@@ -13622,8 +13622,8 @@ var require_axios = __commonJS({
           return await this._request(configOrUrl, config);
         } catch (err) {
           if (err instanceof Error) {
-            let dummy = {};
-            Error.captureStackTrace ? Error.captureStackTrace(dummy) : dummy = new Error();
+            let dummy;
+            Error.captureStackTrace ? Error.captureStackTrace(dummy = {}) : dummy = new Error();
             const stack = dummy.stack ? dummy.stack.replace(/^.+\n/, "") : "";
             try {
               if (!err.stack) {
@@ -13665,10 +13665,6 @@ var require_axios = __commonJS({
             }, true);
           }
         }
-        validator.assertOptions(config, {
-          baseUrl: validators3.spelling("baseURL"),
-          withXsrfToken: validators3.spelling("withXSRFToken")
-        }, true);
         config.method = (config.method || this.defaults.method || "get").toLowerCase();
         let contextHeaders = headers && utils$1.merge(
           headers.common,
@@ -21843,11 +21839,6 @@ function buildURL(url2, params, options) {
     return url2;
   }
   const _encode = options && options.encode || encode2;
-  if (utils_default.isFunction(options)) {
-    options = {
-      serialize: options
-    };
-  }
   const serializeFn = options && options.serialize;
   let serializedParams;
   if (serializeFn) {
@@ -22489,7 +22480,7 @@ var import_follow_redirects = __toESM(require_follow_redirects(), 1);
 var import_zlib = __toESM(require("zlib"), 1);
 
 // node_modules/axios/lib/env/data.js
-var VERSION = "1.7.9";
+var VERSION = "1.7.7";
 
 // node_modules/axios/lib/helpers/parseProtocol.js
 function parseProtocol(url2) {
@@ -22648,7 +22639,7 @@ var AxiosTransformStream_default = AxiosTransformStream;
 var import_events = require("events");
 
 // node_modules/axios/lib/helpers/formDataToStream.js
-var import_util = __toESM(require("util"), 1);
+var import_util = require("util");
 var import_stream2 = require("stream");
 
 // node_modules/axios/lib/helpers/readBlob.js
@@ -22668,7 +22659,7 @@ var readBlob_default = readBlob;
 
 // node_modules/axios/lib/helpers/formDataToStream.js
 var BOUNDARY_ALPHABET = utils_default.ALPHABET.ALPHA_DIGIT + "-_";
-var textEncoder = typeof TextEncoder === "function" ? new TextEncoder() : new import_util.default.TextEncoder();
+var textEncoder = new import_util.TextEncoder();
 var CRLF = "\r\n";
 var CRLF_BYTES = textEncoder.encode(CRLF);
 var CRLF_BYTES_COUNT = 2;
@@ -22918,7 +22909,7 @@ function dispatchBeforeRedirect(options, responseDetails) {
 function setProxy(options, configProxy, location) {
   let proxy = configProxy;
   if (!proxy && proxy !== false) {
-    const proxyUrl = import_proxy_from_env.default.getProxyForUrl(location);
+    const proxyUrl = (0, import_proxy_from_env.getProxyForUrl)(location);
     if (proxyUrl) {
       proxy = new URL(proxyUrl);
     }
@@ -23093,7 +23084,7 @@ var http_default = isHttpAdapterSupported && function httpAdapter(config) {
         } catch (e) {
         }
       }
-    } else if (utils_default.isBlob(data) || utils_default.isFile(data)) {
+    } else if (utils_default.isBlob(data)) {
       data.size && headers.setContentType(data.type || "application/octet-stream");
       headers.setContentLength(data.size || 0);
       data = import_stream4.default.Readable.from(readBlob_default(data));
@@ -23296,7 +23287,7 @@ var http_default = isHttpAdapterSupported && function httpAdapter(config) {
             return;
           }
           const err = new AxiosError_default(
-            "stream has been aborted",
+            "maxContentLength size of " + config.maxContentLength + " exceeded",
             AxiosError_default.ERR_BAD_RESPONSE,
             config,
             lastRequest
@@ -23393,13 +23384,45 @@ var http_default = isHttpAdapterSupported && function httpAdapter(config) {
 };
 
 // node_modules/axios/lib/helpers/isURLSameOrigin.js
-var isURLSameOrigin_default = platform_default.hasStandardBrowserEnv ? /* @__PURE__ */ ((origin2, isMSIE) => (url2) => {
-  url2 = new URL(url2, platform_default.origin);
-  return origin2.protocol === url2.protocol && origin2.host === url2.host && (isMSIE || origin2.port === url2.port);
-})(
-  new URL(platform_default.origin),
-  platform_default.navigator && /(msie|trident)/i.test(platform_default.navigator.userAgent)
-) : () => true;
+var isURLSameOrigin_default = platform_default.hasStandardBrowserEnv ? (
+  // Standard browser envs have full support of the APIs needed to test
+  // whether the request URL is of the same origin as current location.
+  function standardBrowserEnv() {
+    const msie = platform_default.navigator && /(msie|trident)/i.test(platform_default.navigator.userAgent);
+    const urlParsingNode = document.createElement("a");
+    let originURL;
+    function resolveURL(url2) {
+      let href = url2;
+      if (msie) {
+        urlParsingNode.setAttribute("href", href);
+        href = urlParsingNode.href;
+      }
+      urlParsingNode.setAttribute("href", href);
+      return {
+        href: urlParsingNode.href,
+        protocol: urlParsingNode.protocol ? urlParsingNode.protocol.replace(/:$/, "") : "",
+        host: urlParsingNode.host,
+        search: urlParsingNode.search ? urlParsingNode.search.replace(/^\?/, "") : "",
+        hash: urlParsingNode.hash ? urlParsingNode.hash.replace(/^#/, "") : "",
+        hostname: urlParsingNode.hostname,
+        port: urlParsingNode.port,
+        pathname: urlParsingNode.pathname.charAt(0) === "/" ? urlParsingNode.pathname : "/" + urlParsingNode.pathname
+      };
+    }
+    originURL = resolveURL(window.location.href);
+    return function isURLSameOrigin(requestURL) {
+      const parsed = utils_default.isString(requestURL) ? resolveURL(requestURL) : requestURL;
+      return parsed.protocol === originURL.protocol && parsed.host === originURL.host;
+    };
+  }()
+) : (
+  // Non standard browser envs (web workers, react-native) lack needed support.
+  /* @__PURE__ */ function nonStandardBrowserEnv() {
+    return function isURLSameOrigin() {
+      return true;
+    };
+  }()
+);
 
 // node_modules/axios/lib/helpers/cookies.js
 var cookies_default = platform_default.hasStandardBrowserEnv ? (
@@ -23439,7 +23462,7 @@ var headersToObject = (thing) => thing instanceof AxiosHeaders_default ? { ...th
 function mergeConfig(config1, config2) {
   config2 = config2 || {};
   const config = {};
-  function getMergedValue(target, source, prop, caseless) {
+  function getMergedValue(target, source, caseless) {
     if (utils_default.isPlainObject(target) && utils_default.isPlainObject(source)) {
       return utils_default.merge.call({ caseless }, target, source);
     } else if (utils_default.isPlainObject(source)) {
@@ -23449,11 +23472,11 @@ function mergeConfig(config1, config2) {
     }
     return source;
   }
-  function mergeDeepProperties(a, b, prop, caseless) {
+  function mergeDeepProperties(a, b, caseless) {
     if (!utils_default.isUndefined(b)) {
-      return getMergedValue(a, b, prop, caseless);
+      return getMergedValue(a, b, caseless);
     } else if (!utils_default.isUndefined(a)) {
-      return getMergedValue(void 0, a, prop, caseless);
+      return getMergedValue(void 0, a, caseless);
     }
   }
   function valueFromConfig2(a, b) {
@@ -23504,7 +23527,7 @@ function mergeConfig(config1, config2) {
     socketPath: defaultToConfig2,
     responseEncoding: defaultToConfig2,
     validateStatus: mergeDirectKeys,
-    headers: (a, b, prop) => mergeDeepProperties(headersToObject(a), headersToObject(b), prop, true)
+    headers: (a, b) => mergeDeepProperties(headersToObject(a), headersToObject(b), true)
   };
   utils_default.forEach(Object.keys(Object.assign({}, config1, config2)), function computeConfigValue(prop) {
     const merge2 = mergeMap[prop] || mergeDeepProperties;
@@ -24081,12 +24104,6 @@ validators.transitional = function transitional(validator, version, message) {
     return validator ? validator(value, opt, opts) : true;
   };
 };
-validators.spelling = function spelling(correctSpelling) {
-  return (value, opt) => {
-    console.warn(`${opt} is likely a misspelling of ${correctSpelling}`);
-    return true;
-  };
-};
 function assertOptions(options, schema, allowUnknown) {
   if (typeof options !== "object") {
     throw new AxiosError_default("options must be an object", AxiosError_default.ERR_BAD_OPTION_VALUE);
@@ -24137,8 +24154,8 @@ var Axios = class {
       return await this._request(configOrUrl, config);
     } catch (err) {
       if (err instanceof Error) {
-        let dummy = {};
-        Error.captureStackTrace ? Error.captureStackTrace(dummy) : dummy = new Error();
+        let dummy;
+        Error.captureStackTrace ? Error.captureStackTrace(dummy = {}) : dummy = new Error();
         const stack = dummy.stack ? dummy.stack.replace(/^.+\n/, "") : "";
         try {
           if (!err.stack) {
@@ -24180,10 +24197,6 @@ var Axios = class {
         }, true);
       }
     }
-    validator_default.assertOptions(config, {
-      baseUrl: validators2.spelling("baseURL"),
-      withXsrfToken: validators2.spelling("withXSRFToken")
-    }, true);
     config.method = (config.method || this.defaults.method || "get").toLowerCase();
     let contextHeaders = headers && utils_default.merge(
       headers.common,
@@ -24996,7 +25009,7 @@ var SonosHandler = class {
     }
     this.deviceIP = coordinatorIP;
     await this.playFavorite(uri);
-    if (!this.selectedSpeakerUUIDs.includes(coordinatorUUID)) {
+    if (this.selectedSpeakerUUIDs && !this.selectedSpeakerUUIDs.includes(coordinatorUUID)) {
       this.selectedSpeakerUUIDs.unshift(coordinatorUUID);
     }
   }
@@ -25390,7 +25403,11 @@ var SonosHandler = class {
       const parsedURL = new URL(url2);
       return parsedURL.hostname;
     } catch (error) {
-      this.sendError("Error parsing URL to extract IP address: " + error.message);
+      if (error instanceof Error) {
+        this.sendError("Error parsing URL to extract IP address: " + error.message);
+      } else {
+        this.sendError("Error parsing URL to extract IP address: " + String(error));
+      }
       return null;
     }
   }
@@ -25430,7 +25447,7 @@ var start = async () => {
   DeskThing.on("get", handleGet);
   DeskThing.on("set", handleSet);
   const data = await DeskThing.getData();
-  if (data.Sonos_IP) {
+  if (data && data.Sonos_IP) {
     sonos.deviceIP = data.Sonos_IP;
     await sonos.getTrackInfo();
     await sonos.getFavorites();
@@ -25578,7 +25595,7 @@ var handleSet = async (data) => {
     case "volume":
       await sonos.setVolume(data.payload);
       console.log("Set current volume:", data.payload);
-      DeskThing.sendMessageToClients({
+      DeskThing.send("data", {
         type: "currentVolume",
         payload: { volume: data.payload }
       });

@@ -1,33 +1,36 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import MusicStore from '../Stores/musicStore'// Assuming MusicStore exists in your Stores directory
-import { SongData } from 'deskthing-client/dist/types'; // Assuming correct package
+import { DeskThing, SongData } from 'deskthing-client'// Assuming MusicStore exists in your Stores directory
 import Loading from './Loading'; // Import the Loading component we created
 import { ScrollingText } from '../components/ScrollingText'; // Import the ScrollingText component we created
 import './Player.css';
 
 const Player: React.FC = () => {
-  const musicStore = MusicStore.getInstance();
+  // Use deskthing now instead of a music store
+  const deskThing = DeskThing.getInstance();
   const navigate = useNavigate();
   const [currentSong, setCurrentSong] = useState<SongData | null>(null);
   const [backgroundColor, setBackgroundColor] = useState<string>('');
 
   useEffect(() => {
-    const updateSong = async (song?: SongData, backgroundColor?: number[]) => {
-      if (song && backgroundColor) {
-        setCurrentSong(song);
-        setBackgroundColor(`rgba(${backgroundColor.join(',')}, 0.5)`);
+    const updateSong = (songData?: SongData) => {
+      if (songData) {
+        setCurrentSong(songData);
+        setBackgroundColor(songData?.color?.rgb || 'rgb(128, 128, 128)') // Use the new background color module
       }
     };
 
-    const unsubscribe = musicStore.on('music', (a, b) => updateSong(a as SongData, b as number[]));
+    const unsubscribe = deskThing.on('music', (songData) => updateSong(songData.payload));
 
-    const song = musicStore.getSong();
-    if (song) {
-      setCurrentSong(song);
-    } else {
-      musicStore.fetchInitialSong();
+    const fetchInitialData = async () => { // put this into a function
+      // getMusic() will automatically fetch data    
+      const song = await deskThing.getMusic();
+      if (song) {
+        setCurrentSong(song);
+      }
     }
+
+    fetchInitialData()
 
     return () => {
       unsubscribe();

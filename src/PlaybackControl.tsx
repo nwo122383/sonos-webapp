@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import './PlaybackControl.css';
+import DeskThing, { SocketData } from 'deskthing-client';
 
 interface Speaker {
   uuid: string;
@@ -12,49 +13,43 @@ interface Speaker {
 }
 
 const PlaybackControl = () => {
-  const [speakers, setSpeakers] = useState<Speaker[]>([]);
+  const [speakers, _setSpeakers] = useState<Speaker[]>([]);
   const [selectedPlaybackSpeakers, setSelectedPlaybackSpeakers] = useState<string[]>([]);
 
   useEffect(() => {
     // Request zone group state
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'zoneGroupState',
-        },
-      },
-      '*'
-    );
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'get',
+      request: 'zoneGroupState',
+    })
 
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'zoneGroupState') {
+    const handleZoneMessage = (socketData: SocketData) => {
+      if (socketData.type === 'zoneGroupState') {
         // Parse speakers from zone group state as before
         // ... (same as previous implementation)
-      } else if (event.data.type === 'selectedPlaybackSpeakers' && event.data.payload.uuids) {
-        setSelectedPlaybackSpeakers(event.data.payload.uuids);
       }
     };
 
-    window.addEventListener('message', handleMessage);
+    const handlePlaybackMessage = (socketData: SocketData) => {
+      if (socketData.type === 'selectedPlaybackSpeakers' && socketData.payload.uuids) {
+        setSelectedPlaybackSpeakers(socketData.payload.uuids);
+      }
+    };
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'get',
+      request: 'selectedPlaybackSpeakers',
+    })
 
-    // Request the currently selected playback speakers
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'selectedPlaybackSpeakers',
-        },
-      },
-      '*'
-    );
+    const removeZoneListener = DeskThing.on('zoneGroupState', handleZoneMessage);
+    const removePlaybackListener = DeskThing.on('selectedPlaybackSpeakers', handlePlaybackMessage);
+
+
 
     return () => {
-      window.removeEventListener('message', handleMessage);
+      removePlaybackListener()
+      removeZoneListener()
     };
   }, []);
 
@@ -68,18 +63,13 @@ const PlaybackControl = () => {
       }
 
       // Notify backend of selected playback speakers
-      window.parent.postMessage(
-        {
-          type: 'IFRAME_ACTION',
-          payload: {
-            app: 'sonos-webapp',
-            type: 'set',
-            request: 'selectPlaybackSpeakers',
-            payload: { uuids: newSelected },
-          },
-        },
-        '*'
-      );
+      DeskThing.send({
+        app: 'sonos-webapp',
+        type: 'set',
+        request: 'selectPlaybackSpeakers',
+        payload: { uuids: newSelected },
+      })
+
 
       return newSelected;
     });

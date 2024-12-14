@@ -14,8 +14,8 @@ const start = async () => {
   DeskThing.on('set', handleSet);
 
   const data = await DeskThing.getData();
-  if (data.Sonos_IP) {
-    sonos.deviceIP = data.Sonos_IP;
+  if (data && data.Sonos_IP) {
+    sonos.deviceIP = data.Sonos_IP as string;
     await sonos.getTrackInfo();
     await sonos.getFavorites();
     await sonos.getZoneGroupState();
@@ -167,7 +167,7 @@ const handleSet = async (data: any) => {
     case 'volume':  // This handles getting the current volume when the app starts
       await sonos.setVolume(data.payload);  // Assuming you have a `setVolume` function
       console.log('Set current volume:', data.payload);
-      DeskThing.sendMessageToClients({
+      DeskThing.send('data', {
           type: 'currentVolume',
           payload: { volume: data.payload}
       });
