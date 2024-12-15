@@ -1,0 +1,16 @@
+{
+  "id": "sonos-webapp",
+  "isAudioSource": true,
+  "isScreenSaver": false,
+  "isWebApp": true,
+  "label": "Sonos",
+  "version": "0.10.0",
+  "version_code": 10,
+  "compatible_server": 10,
+  "compatible_client": 10,
+  "description": "an app to play sonos on DeskThing",
+  "author": "nWo122383",
+  "platforms": ["windows"],
+  "homepage": "",
+  "repository": "https://github.com/nwo122383/sonos-webapp/"
+}

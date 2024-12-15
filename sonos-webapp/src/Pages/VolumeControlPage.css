@@ -1,0 +1,54 @@
+.volume-control-page {
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: #1a202c; /* Slate color background */
+    color: white;
+  }
+  
+  .volume-title {
+    font-size: 2.5rem;
+    margin-bottom: 2rem;
+  }
+  
+  .speaker-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  
+  .speaker-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 80%;
+    max-width: 500px;
+    padding: 15px;
+    border-radius: 8px;
+    background-color: #2d3748; /* Darker slate */
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+  
+  .speaker-item h2 {
+    font-size: 1.5rem;
+  }
+  
+  .volume-button {
+    background-color: #3182ce; /* Blue */
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    font-size: 1rem;
+    border: none;
+  }
+  
+  .volume-button:hover {
+    background-color: #63b3ed; /* Lighter blue */
+  }
+  
