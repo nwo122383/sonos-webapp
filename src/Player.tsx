@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Loading from './Pages/Loading';
 import { ScrollingText } from './components/ScrollingText';
 import './Player.css';
-import DeskThing, { SocketData, SongData } from 'deskthing-client';
+import { DeskThing, SocketData, SongData } from 'deskthing-client';
 
 const Player: React.FC = () => {
   const navigate = useNavigate();

@@ -27,7 +27,6 @@ const VolumeControl = () => {
           type: 'get',
           request: 'speakersList',
         },
-     
       
     );
   };

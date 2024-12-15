@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './VolumeControlPage.css';
-import DeskThing from 'deskthing-client';
+import { DeskThing } from 'deskthing-client';
 
 const VolumeControlPage: React.FC = () => {
   const [speakers, setSpeakers] = useState<string[]>([]); // Fetch speakers from your source

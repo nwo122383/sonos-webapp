@@ -1,6 +1,7 @@
 // src/components/VolumeBar.tsx
 
 import React, { useEffect, useState } from 'react';
+import DeskThing, { SocketData } from 'deskthing-client';
 import './VolumeBar.css';
 
 const VolumeBar = () => {
@@ -32,17 +33,12 @@ const VolumeBar = () => {
   }, []);
 
   const fetchSelectedVolumeSpeakers = () => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'get',
           request: 'selectedVolumeSpeakers',
         },
-      },
-      '*'
-    );
+          );
   };
 
   const fetchCurrentVolume = (speakerUUIDs: string[]) => {
@@ -51,17 +47,13 @@ const VolumeBar = () => {
     }
 
     // For simplicity, fetch volume from the first selected speaker
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'get',
           request: 'volume',
           payload: { speakerUUIDs },
         },
-      },
-      '*'
+     
     );
   };
 
@@ -97,10 +89,7 @@ const VolumeBar = () => {
         setVolume(newVolume);
         setVisible(true);
 
-        window.parent.postMessage(
-          {
-            type: 'IFRAME_ACTION',
-            payload: {
+        DeskThing.send({
               app: 'sonos-webapp',
               type: 'set',
               request: 'volumeChange',
@@ -109,8 +98,7 @@ const VolumeBar = () => {
                 speakerUUIDs: selectedVolumeSpeakers,
               },
             },
-          },
-          '*'
+          
         );
       }
     };
