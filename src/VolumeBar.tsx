@@ -1,7 +1,7 @@
 // src/components/VolumeBar.tsx
 
 import React, { useEffect, useState } from 'react';
-import { DeskThing, SocketData } from 'deskthing-client';
+import DeskThing, { SocketData } from 'deskthing-client';
 import './VolumeBar.css';
 
 const VolumeBar = () => {

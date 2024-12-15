@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import './PlaybackControl.css';
-import { DeskThing, SocketData } from 'deskthing-client';
+import DeskThing, { SocketData } from 'deskthing-client';
 
 interface Speaker {
   uuid: string;

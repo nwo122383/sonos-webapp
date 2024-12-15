@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { DeskThing, SocketData } from 'deskthing-client';
+import DeskThing, { SocketData } from 'deskthing-client';
 import './VolumeControl.css';
 
 interface Speaker {

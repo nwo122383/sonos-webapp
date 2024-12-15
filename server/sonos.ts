@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { DeskThing, SongData } from 'deskthing-server';
+import { DeskThing as DK, SongData } from 'deskthing-server';
 import xml2js from 'xml2js';
 
 // Shared singleton to store selected speaker information
@@ -261,7 +261,7 @@ async leaveGroup(speakerIP: string) {
       this.speakersList = speakersList;
   
       // Send to frontend
-      DeskThing.send({
+      DK.getInstance().sendDataToClient({
         app: 'sonos-webapp',
         type: 'zoneGroupState',
         payload: zoneGroupState,
@@ -551,7 +551,7 @@ async leaveGroup(speakerIP: string) {
 
       this.favoritesList = favoritesList;
 
-      DeskThing.send({ app: 'sonos-webapp', type: 'favorites', payload: favoritesList });
+      DK.getInstance().sendDataToClient({ app: 'sonos-webapp', type: 'favorites', payload: favoritesList });
     } catch (error: any) {
       this.sendError(`Error fetching favorites: ${error.response ? error.response.data : error.message}`);
     }
@@ -794,18 +794,12 @@ async leaveGroup(speakerIP: string) {
   // Start polling track info
   startPollingTrackInfo(interval = 5000) {
     if (this.pollingInterval) {
-      this.pollingInterval()
-    }
-
-    this.pollingInterval = DeskThing.addBackgroundTaskLoop(async () => {
-      this.getTrackInfo();
-      await new Promise(resolve => setTimeout(resolve, interval));
-    });
-
-    if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
     }
 
+    this.pollingInterval = setInterval(() => {
+      this.getTrackInfo();
+    }, interval);
   }
 
   // Stop polling track info
@@ -905,13 +899,13 @@ async leaveGroup(speakerIP: string) {
         this.sendLog(
           `Fetched Track Info: ${songData.artist} - ${songData.track_name}, Album - ${songData.album}, AlbumArtURI - ${albumArtURI}`
         );
-        DeskThing.send({ app: 'client', type: 'song', payload: songData });
-        DeskThing.send({ app: 'sonos-webapp', type: 'song', payload: songData });
+        DK.getInstance().sendDataToClient({ app: 'client', type: 'song', payload: songData });
+        DK.getInstance().sendDataToClient({ app: 'sonos-webapp', type: 'song', payload: songData });
       } else {
         this.sendLog('No valid track info received. Retaining last known track info.');
       }
     } catch (error: any) {
-            DeskThing.send({
+            DK.getInstance().sendDataToClient({
         app: 'sonos-webapp',
         type: 'song',
         payload: this.lastKnownSongData || {
@@ -1001,7 +995,7 @@ async leaveGroup(speakerIP: string) {
     }
 
     // Send volume change back to frontend
-    DeskThing.send({
+    DK.getInstance().sendDataToClient({
         app: 'sonos-webapp',
         type: 'volumeChange',
         payload: { volume },
@@ -1096,11 +1090,11 @@ extractIPAddress(url: string): string | null {
 
   // Helper methods
   async sendLog(message: string) {
-    DeskThing.sendLog(message);
+    DK.getInstance().sendLog(message);
   }
 
   async sendError(message: string) {
-    DeskThing.sendError(message);
+    DK.getInstance().sendError(message);
   }
 
   // Check for refresh
