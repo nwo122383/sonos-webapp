@@ -7,8 +7,8 @@
   "scripts": {
     "dev-ip": "node dev-ip.js",
     "dev": "vite",
-    "build": "vite build && npm run build-server && node scripts/package.js",
-    "build-server": "esbuild server/index.ts --bundle --platform=node --outfile=dist/index.js",
+    "build": "vite build && npm run build-server",
+    "build-server": "esbuild server/index.ts --bundle --platform=node --outdir=dist",
     "setup": "node setup.js",
     "lint": "eslint .",
     "preview": "vite preview"

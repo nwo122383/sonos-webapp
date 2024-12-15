@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import './index.css';
-import DeskThing from 'deskthing-client';
+import { DeskThing } from 'deskthing-client';
 
 const Controls = () => {
   const [shuffleState, setShuffleState] = useState(false);

@@ -1,9 +1,8 @@
 // src/components/Favorites.tsx
 
 import React, { useEffect, useState } from 'react';
+import { DeskThing, SocketData } from 'deskthing-client';
 import './Favorites.css';
-import { DeskThing as DK } from 'deskthing-server';
-const DeskThing = DK.getInstance();
 export { DeskThing };
 
 interface Favorite {
@@ -96,7 +95,12 @@ const Favorites = () => {
     const removeFavoritesListener = DeskThing.on('favorites', handleFavorite)
     const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState)
     const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker)
-  
+    return () => {
+      removeFavoritesListener()
+      removeZoneGroupStateListener()
+      removeSelectedSpeakersListener()
+    }
+  })
 
   const extractIPAddress = (url: string) => {
     try {
