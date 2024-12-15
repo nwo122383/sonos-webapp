@@ -1,9 +1,8 @@
 // src/components/Favorites.tsx
 
 import React, { useEffect, useState } from 'react';
+import { DeskThing, SocketData } from 'deskthing-client';
 import './Favorites.css';
-import { DeskThing as DK } from 'deskthing-server';
-const DeskThing = DK.getInstance();
 export { DeskThing };
 
 interface Favorite {
