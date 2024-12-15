@@ -1,5 +1,4 @@
 /node_modules
+/sonos-webapp
 /sonos-webapp/node_modules
 /dist
-/vite-project/node_modules
-
