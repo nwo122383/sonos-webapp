@@ -1,13 +1,8 @@
 // src/components/Favorites.tsx
 
 import React, { useEffect, useState } from 'react';
+import DeskThing, { SocketData } from 'deskthing-client';
 import './Favorites.css';
-<<<<<<< HEAD
-import { DeskThing as DK } from 'deskthing-server';
-const DeskThing = DK.getInstance();
-=======
->>>>>>> parent of 850d974 (Merge remote-tracking branch 'upstream/main')
-export { DeskThing };
 
 interface Favorite {
   uri: string;
@@ -29,36 +24,31 @@ const Favorites = () => {
   const [selectedSpeakerUUIDs, setSelectedSpeakerUUIDs] = useState<string[]>([]);
 
   useEffect(() => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'get',
           request: 'favorites',
         },
-      },
-      '*'
+     
     );
 
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'get',
           request: 'zoneGroupState',
         },
-      },
-      '*'
+      
     );
 
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'favorites') {
-        setFavorites(event.data.payload);
-      } else if (event.data.type === 'zoneGroupState') {
+    const handleFavorite = (socketData: SocketData) => {
+      if (socketData.type === 'favorites') {
+        setFavorites(socketData.payload);
+      }
+    };
+    const handleZoneGroupState = (socketData: SocketData) => {
+      if (socketData.type === 'zoneGroupState') {
         const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(event.data.payload, 'text/xml');
+        const xmlDoc = parser.parseFromString(socketData.payload, 'text/xml');
         const groupElements = Array.from(xmlDoc.getElementsByTagName('ZoneGroup'));
 
         const allSpeakers: Speaker[] = [];
@@ -85,36 +75,8 @@ const Favorites = () => {
         });
 
         setSpeakers(allSpeakers);
-      } else if (event.data.type === 'selectedSpeakers' && event.data.payload.uuids) {
-        setSelectedSpeakerUUIDs(event.data.payload.uuids);
       }
     };
-<<<<<<< HEAD
-
-    window.addEventListener('message', handleMessage);
-
-    // Request the currently selected speakers
-    DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'selectedSpeakers',
-        },
-     
-    );
-
-    return () => {
-<<<<<<< HEAD
-      removeFavoritesListener()
-      removeZoneGroupStateListener()
-      removeSelectedSpeakersListener()
-    }
-  })
-=======
-      window.removeEventListener('message', handleMessage);
-    };
-  }, []);
->>>>>>> parent of ae95c12 (Update Favorites.tsx)
-=======
     const handleSelectedSpeaker = (socketData: SocketData) => {
       if (socketData.type === 'selectedSpeakers' && socketData.payload.uuids) {
         setSelectedSpeakerUUIDs(socketData.payload.uuids);
@@ -124,19 +86,14 @@ const Favorites = () => {
     const removeFavoritesListener = DeskThing.on('favorites', handleFavorite)
     const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState)
     const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker)
-<<<<<<< HEAD
-  
->>>>>>> parent of 529e740 (Updated to v0.10!!)
-=======
     return () => {
-      removeFavoritesListener()
-      removeZoneGroupStateListener()
-      removeSelectedSpeakersListener()
-    }
-  })
->>>>>>> parent of 850d974 (Merge remote-tracking branch 'upstream/main')
-
-  const extractIPAddress = (url: string) => {
+      removeFavoritesListener();
+      removeZoneGroupStateListener();
+      removeSelectedSpeakersListener();
+    };
+  }
+)
+       const extractIPAddress = (url: string) => {
     try {
       const parsedURL = new URL(url);
       return parsedURL.hostname;
@@ -155,17 +112,13 @@ const Favorites = () => {
         newSelected = [...prevSelected, uuid];
       }
 
-      window.parent.postMessage(
-        {
-          type: 'IFRAME_ACTION',
-          payload: {
+     DeskThing.send({
             app: 'sonos-webapp',
             type: 'set',
             request: 'selectSpeakers',
             payload: { uuids: newSelected },
           },
-        },
-        '*'
+        
       );
 
       return newSelected;
@@ -178,10 +131,7 @@ const Favorites = () => {
       return;
     }
 
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
+    DeskThing.send({
           app: 'sonos-webapp',
           type: 'set',
           request: 'playFavorite',
@@ -190,8 +140,7 @@ const Favorites = () => {
             speakerUUIDs: selectedSpeakerUUIDs,
           },
         },
-      },
-      '*'
+  
     );
   };
 
@@ -204,33 +153,25 @@ const Favorites = () => {
           if (selectedSpeakerUUIDs.length === speakers.length) {
             setSelectedSpeakerUUIDs([]);
 
-            window.parent.postMessage(
-              {
-                type: 'IFRAME_ACTION',
-                payload: {
+            DeskThing.send({
                   app: 'sonos-webapp',
                   type: 'set',
                   request: 'selectSpeakers',
                   payload: { uuids: [] },
                 },
-              },
-              '*'
+           
             );
           } else {
             const allUUIDs = speakers.map((speaker) => speaker.uuid);
             setSelectedSpeakerUUIDs(allUUIDs);
 
-            window.parent.postMessage(
-              {
-                type: 'IFRAME_ACTION',
-                payload: {
+            DeskThing.send({
                   app: 'sonos-webapp',
                   type: 'set',
                   request: 'selectSpeakers',
                   payload: { uuids: allUUIDs },
                 },
-              },
-              '*'
+         
             );
           }
         }}
