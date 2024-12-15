@@ -3,10 +3,14 @@
   "isAudioSource": true,
   "isScreenSaver": false,
   "isWebApp": true,
+<<<<<<< HEAD
   "isLocalApp": false,
   "requires": [
     "utility"
   ],
+=======
+  "requires": ["utility"],
+>>>>>>> parent of 044c3e0 (Utility Hotfix)
   "label": "Sonos",
   "version": "0.9.0",
   "description": "an app to play sonos on DeskThing",
