@@ -3,7 +3,6 @@
   "isAudioSource": true,
   "isScreenSaver": false,
   "isWebApp": true,
-  "requires": ["utility"],
   "label": "Sonos",
   "version": "0.10.0",
   "version_code": 10,
