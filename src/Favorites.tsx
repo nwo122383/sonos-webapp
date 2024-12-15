@@ -2,8 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import './Favorites.css';
+<<<<<<< HEAD
 import { DeskThing as DK } from 'deskthing-server';
 const DeskThing = DK.getInstance();
+=======
+>>>>>>> parent of 850d974 (Merge remote-tracking branch 'upstream/main')
 export { DeskThing };
 
 interface Favorite {
@@ -121,8 +124,17 @@ const Favorites = () => {
     const removeFavoritesListener = DeskThing.on('favorites', handleFavorite)
     const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState)
     const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker)
+<<<<<<< HEAD
   
 >>>>>>> parent of 529e740 (Updated to v0.10!!)
+=======
+    return () => {
+      removeFavoritesListener()
+      removeZoneGroupStateListener()
+      removeSelectedSpeakersListener()
+    }
+  })
+>>>>>>> parent of 850d974 (Merge remote-tracking branch 'upstream/main')
 
   const extractIPAddress = (url: string) => {
     try {
