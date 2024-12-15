@@ -22,15 +22,14 @@ const Favorites = () => {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [selectedSpeakerUUIDs, setSelectedSpeakerUUIDs] = useState<string[]>([]);
-
+  
   useEffect(() => {
     DeskThing.send({
           app: 'sonos-webapp',
           type: 'get',
           request: 'favorites',
         },
-     
-    );
+          );
 
     DeskThing.send({
           app: 'sonos-webapp',
@@ -94,6 +93,9 @@ const Favorites = () => {
   }
 )
        const extractIPAddress = (url: string) => {
+
+  const extractIPAddress = (url: string) => {
+
     try {
       const parsedURL = new URL(url);
       return parsedURL.hostname;
@@ -118,7 +120,6 @@ const Favorites = () => {
             request: 'selectSpeakers',
             payload: { uuids: newSelected },
           },
-        
       );
 
       return newSelected;
@@ -140,9 +141,7 @@ const Favorites = () => {
             speakerUUIDs: selectedSpeakerUUIDs,
           },
         },
-  
     );
-  };
 
   return (
     <div id="favorites-container">
@@ -159,7 +158,7 @@ const Favorites = () => {
                   request: 'selectSpeakers',
                   payload: { uuids: [] },
                 },
-           
+              
             );
           } else {
             const allUUIDs = speakers.map((speaker) => speaker.uuid);
@@ -171,11 +170,10 @@ const Favorites = () => {
                   request: 'selectSpeakers',
                   payload: { uuids: allUUIDs },
                 },
-         
             );
-          }
+        
         }}
-        className="select-all-button"
+      }className="select-all-button"
       >
         {selectedSpeakerUUIDs.length === speakers.length ? 'Deselect All Speakers' : 'Select All Speakers'}
       </button>
@@ -220,4 +218,9 @@ const Favorites = () => {
   );
 };
 
+
 export default Favorites;
+
+}
+export default Favorites;
+
