@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './index.css';
+import { DeskThing } from 'deskthing-client';
 
 const NowPlaying = () => {
   const [songData, setSongData] = useState({
@@ -10,17 +11,11 @@ const NowPlaying = () => {
   });
 
   useEffect(() => {
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'song',
-        },
-      },
-      '*'
-    );
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'get',
+      request: 'song',
+    });
 
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'song' && event.data.payload) {

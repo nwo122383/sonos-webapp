@@ -1,33 +1,35 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MusicStore } from '../Stores/musicStore';
-import { SongData } from 'deskthing-client/dist/types';
-import Loading from './Loading';
-import { ScrollingText } from '../components/ScrollingText';
+import Loading from './Pages/Loading';
+import { ScrollingText } from './components/ScrollingText';
 import './Player.css';
+import { DeskThing, SocketData, SongData } from 'deskthing-client';
 
 const Player: React.FC = () => {
-  const musicStore = MusicStore.getInstance();
   const navigate = useNavigate();
   const [currentSong, setCurrentSong] = useState<SongData | null>(null);
   const [backgroundColor, setBackgroundColor] = useState<string>('');
 
   useEffect(() => {
-    const updateSong = async (song?: SongData, backgroundColor?: number[]) => {
-      if (song && backgroundColor) {
+    const updateSong = (socketData: SocketData) => {
+      const song = socketData.payload as SongData
+      if (song) {
         setCurrentSong(song);
-        setBackgroundColor(`rgba(${backgroundColor.join(',')}, 0.5)`);
+        setBackgroundColor(song.color?.rgb || `rgba(128, 128, 128, 0.5)`);
       }
     };
 
-    const unsubscribe = musicStore.on('music', (a, b) => updateSong(a as SongData, b as number[]));
+    const unsubscribe = DeskThing.on('music', updateSong)
 
-    const song = musicStore.getSong();
-    if (song) {
-      setCurrentSong(song);
-    } else {
-      musicStore.fetchInitialSong();
+    const fetchSongData = async () => {
+      const song = await DeskThing.getMusic();
+      if (song) {
+        setCurrentSong(song);
+      }
     }
+
+    fetchSongData();
+
 
     return () => {
       unsubscribe();

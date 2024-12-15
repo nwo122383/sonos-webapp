@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import MusicStore from '../Stores/musicStore'; // Make sure this path is correct
 import './VolumeControlPage.css';
+import { DeskThing } from 'deskthing-client';
 
 const VolumeControlPage: React.FC = () => {
   const [speakers, setSpeakers] = useState<string[]>([]); // Fetch speakers from your source
 
   const incrementVolume = (uuid: string) => {
     // Increase the volume for the specified speaker
-    MusicStore.deskThing.sendMessageToParent({
+    DeskThing.send({ // Use deskthing directly
       type: 'set',
       request: 'volumeChange',
       payload: { speakerUUID: uuid, volume: '+5' },
@@ -16,7 +16,7 @@ const VolumeControlPage: React.FC = () => {
 
   const decrementVolume = (uuid: string) => {
     // Decrease the volume for the specified speaker
-    MusicStore.deskThing.sendMessageToParent({
+    DeskThing.send({ // use DeskThing directly
       type: 'set',
       request: 'volumeChange',
       payload: { speakerUUID: uuid, volume: '-5' },

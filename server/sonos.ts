@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { DeskThing as DK, Settings } from 'deskthing-server';
+import { DeskThing, SongData } from 'deskthing-server';
 import xml2js from 'xml2js';
 
 // Shared singleton to store selected speaker information
@@ -17,28 +17,6 @@ class SelectedSpeakerStore {
       return SelectedSpeakerStore.instance;
   }
 }
-export type SongData = {
-  album: string | null;
-  artist: string | null;
-  playlist: string | null;
-  playlist_id: string | null;
-  track_name: string;
-  shuffle_state: boolean | null;
-  repeat_state: 'off' | 'all' | 'track';
-  is_playing: boolean;
-  can_fast_forward: boolean;
-  can_skip: boolean;
-  can_like: boolean;
-  can_change_volume: boolean;
-  can_set_output: boolean;
-  track_duration: number | null;
-  track_progress: number | null;
-  volume: number;
-  thumbnail: string | null;
-  device: string | null;
-  id: string | null;
-  device_id: string | null;
-};
 
 class SonosHandler {
   deviceIP: string | null = null;
@@ -50,7 +28,7 @@ class SonosHandler {
   deviceUUID: string | null = null;
   lastKnownSongData: any = null;
   pollingInterval: any = null;
-  selectedSpeakerUUIDs: string | null = null;
+  selectedSpeakerUUIDs: string[] | null = null;
   speakersList: { [uuid: string]: { ip: string; zoneName: string } } = {};
   selectedVolumeSpeakers: string[] = [];
   selectedPlaybackSpeakers: string[] = [];
@@ -283,7 +261,7 @@ async leaveGroup(speakerIP: string) {
       this.speakersList = speakersList;
   
       // Send to frontend
-      DK.getInstance().sendDataToClient({
+      DeskThing.send({
         app: 'sonos-webapp',
         type: 'zoneGroupState',
         payload: zoneGroupState,
@@ -573,7 +551,7 @@ async leaveGroup(speakerIP: string) {
 
       this.favoritesList = favoritesList;
 
-      DK.getInstance().sendDataToClient({ app: 'sonos-webapp', type: 'favorites', payload: favoritesList });
+      DeskThing.send({ app: 'sonos-webapp', type: 'favorites', payload: favoritesList });
     } catch (error: any) {
       this.sendError(`Error fetching favorites: ${error.response ? error.response.data : error.message}`);
     }
@@ -606,7 +584,7 @@ async leaveGroup(speakerIP: string) {
     await this.playFavorite(uri);
 
     // Update the selectedSpeakerUUIDs to include the coordinator
-      if (!this.selectedSpeakerUUIDs.includes(coordinatorUUID)) {
+      if (this.selectedSpeakerUUIDs && !this.selectedSpeakerUUIDs.includes(coordinatorUUID)) {
         this.selectedSpeakerUUIDs.unshift(coordinatorUUID);
       }
     }
@@ -816,12 +794,18 @@ async leaveGroup(speakerIP: string) {
   // Start polling track info
   startPollingTrackInfo(interval = 5000) {
     if (this.pollingInterval) {
+      this.pollingInterval()
+    }
+
+    this.pollingInterval = DeskThing.addBackgroundTaskLoop(async () => {
+      this.getTrackInfo();
+      await new Promise(resolve => setTimeout(resolve, interval));
+    });
+
+    if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
     }
 
-    this.pollingInterval = setInterval(() => {
-      this.getTrackInfo();
-    }, interval);
   }
 
   // Stop polling track info
@@ -921,13 +905,13 @@ async leaveGroup(speakerIP: string) {
         this.sendLog(
           `Fetched Track Info: ${songData.artist} - ${songData.track_name}, Album - ${songData.album}, AlbumArtURI - ${albumArtURI}`
         );
-        DK.getInstance().sendDataToClient({ app: 'client', type: 'song', payload: songData });
-        DK.getInstance().sendDataToClient({ app: 'sonos-webapp', type: 'song', payload: songData });
+        DeskThing.send({ app: 'client', type: 'song', payload: songData });
+        DeskThing.send({ app: 'sonos-webapp', type: 'song', payload: songData });
       } else {
         this.sendLog('No valid track info received. Retaining last known track info.');
       }
     } catch (error: any) {
-            DK.getInstance().sendDataToClient({
+            DeskThing.send({
         app: 'sonos-webapp',
         type: 'song',
         payload: this.lastKnownSongData || {
@@ -1017,7 +1001,7 @@ async leaveGroup(speakerIP: string) {
     }
 
     // Send volume change back to frontend
-    DK.getInstance().sendDataToClient({
+    DeskThing.send({
         app: 'sonos-webapp',
         type: 'volumeChange',
         payload: { volume },
@@ -1088,7 +1072,11 @@ extractIPAddress(url: string): string | null {
     const parsedURL = new URL(url);
     return parsedURL.hostname;
   } catch (error) {
-    this.sendError('Error parsing URL to extract IP address: ' + error.message);
+    if (error instanceof Error) {
+      this.sendError('Error parsing URL to extract IP address: ' + error.message);
+    } else {
+      this.sendError('Error parsing URL to extract IP address: ' + String(error));
+    }
     return null;
   }
 }
@@ -1108,11 +1096,11 @@ extractIPAddress(url: string): string | null {
 
   // Helper methods
   async sendLog(message: string) {
-    DK.getInstance().sendLog(message);
+    DeskThing.sendLog(message);
   }
 
   async sendError(message: string) {
-    DK.getInstance().sendError(message);
+    DeskThing.sendError(message);
   }
 
   // Check for refresh

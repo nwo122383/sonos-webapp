@@ -1,7 +1,9 @@
 // src/components/Favorites.tsx
 
 import React, { useEffect, useState } from 'react';
+import { DeskThing, SocketData } from 'deskthing-client';
 import './Favorites.css';
+export { DeskThing };
 
 interface Favorite {
   uri: string;
@@ -47,12 +49,15 @@ const Favorites = () => {
       '*'
     );
 
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'favorites') {
-        setFavorites(event.data.payload);
-      } else if (event.data.type === 'zoneGroupState') {
+    const handleFavorite = (socketData: SocketData) => {
+      if (socketData.type === 'favorites') {
+        setFavorites(socketData.payload);
+      }
+    };
+    const handleZoneGroupState = (socketData: SocketData) => {
+      if (socketData.type === 'zoneGroupState') {
         const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(event.data.payload, 'text/xml');
+        const xmlDoc = parser.parseFromString(socketData.payload, 'text/xml');
         const groupElements = Array.from(xmlDoc.getElementsByTagName('ZoneGroup'));
 
         const allSpeakers: Speaker[] = [];
@@ -79,30 +84,23 @@ const Favorites = () => {
         });
 
         setSpeakers(allSpeakers);
-      } else if (event.data.type === 'selectedSpeakers' && event.data.payload.uuids) {
-        setSelectedSpeakerUUIDs(event.data.payload.uuids);
       }
     };
-
-    window.addEventListener('message', handleMessage);
-
-    // Request the currently selected speakers
-    window.parent.postMessage(
-      {
-        type: 'IFRAME_ACTION',
-        payload: {
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'selectedSpeakers',
-        },
-      },
-      '*'
-    );
-
-    return () => {
-      window.removeEventListener('message', handleMessage);
+    const handleSelectedSpeaker = (socketData: SocketData) => {
+      if (socketData.type === 'selectedSpeakers' && socketData.payload.uuids) {
+        setSelectedSpeakerUUIDs(socketData.payload.uuids);
+      }
     };
-  }, []);
+    // You can also listen for the 'type' with deskthing
+    const removeFavoritesListener = DeskThing.on('favorites', handleFavorite)
+    const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState)
+    const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker)
+    return () => {
+      removeFavoritesListener()
+      removeZoneGroupStateListener()
+      removeSelectedSpeakersListener()
+    }
+  })
 
   const extractIPAddress = (url: string) => {
     try {

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './index.css';
+import { DeskThing } from 'deskthing-client';
 
 const TrackInfo = () => {
     const [trackInfo, setTrackInfo] = useState({
@@ -13,10 +14,9 @@ const TrackInfo = () => {
     useEffect(() => {
         const fetchTrackInfo = () => {
             console.log('Fetching track info...');
-            window.parent.postMessage({
-                type: 'IFRAME_ACTION',
-                payload: { app: 'sonos-webapp', type: 'get', request: 'song' }
-            }, '*');
+            DeskThing.send({
+                app: 'sonos-webapp', type: 'get', request: 'song'
+            })
         };
 
         // Fetch track info initially
