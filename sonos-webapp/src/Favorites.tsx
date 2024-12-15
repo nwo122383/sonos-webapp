@@ -40,15 +40,12 @@ const Favorites = () => {
       
     );
 
-    const handleFavorite = (socketData: SocketData) => {
-      if (socketData.type === 'favorites') {
-        setFavorites(socketData.payload);
-      }
-    };
-    const handleZoneGroupState = (socketData: SocketData) => {
-      if (socketData.type === 'zoneGroupState') {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'favorites') {
+        setFavorites(event.data.payload);
+      } else if (event.data.type === 'zoneGroupState') {
         const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(socketData.payload, 'text/xml');
+        const xmlDoc = parser.parseFromString(event.data.payload, 'text/xml');
         const groupElements = Array.from(xmlDoc.getElementsByTagName('ZoneGroup'));
 
         const allSpeakers: Speaker[] = [];
@@ -75,25 +72,28 @@ const Favorites = () => {
         });
 
         setSpeakers(allSpeakers);
+      } else if (event.data.type === 'selectedSpeakers' && event.data.payload.uuids) {
+        setSelectedSpeakerUUIDs(event.data.payload.uuids);
       }
     };
-    const handleSelectedSpeaker = (socketData: SocketData) => {
-      if (socketData.type === 'selectedSpeakers' && socketData.payload.uuids) {
-        setSelectedSpeakerUUIDs(socketData.payload.uuids);
-      }
-    };
-    // You can also listen for the 'type' with deskthing
-    const removeFavoritesListener = DeskThing.on('favorites', handleFavorite)
-    const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState)
-    const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker)
+
+    window.addEventListener('message', handleMessage);
+
+    // Request the currently selected speakers
+    DeskThing.send({
+          app: 'sonos-webapp',
+          type: 'get',
+          request: 'selectedSpeakers',
+        },
+     
+    );
+
     return () => {
-      removeFavoritesListener();
-      removeZoneGroupStateListener();
-      removeSelectedSpeakersListener();
+      window.removeEventListener('message', handleMessage);
     };
-  }
-)
-       const extractIPAddress = (url: string) => {
+  }, []);
+
+  const extractIPAddress = (url: string) => {
     try {
       const parsedURL = new URL(url);
       return parsedURL.hostname;
