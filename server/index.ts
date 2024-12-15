@@ -1,61 +1,29 @@
 // src/index.ts
 
 import SonosHandler from './sonos';
-import { DeskThing, DataInterface, SettingsType } from 'deskthing-server';
+import { DeskThing as DK } from 'deskthing-server';
+const DeskThing = DK.getInstance();
 export { DeskThing };
 
-let sonos: SonosHandler | null;
+let sonos: SonosHandler;
 
 const start = async () => {
-  if (!sonos) {
-    sonos = new SonosHandler();
-  }
+  sonos = new SonosHandler();
 
   DeskThing.on('get', handleGet);
   DeskThing.on('set', handleSet);
 
   const data = await DeskThing.getData();
   if (data && data.Sonos_IP) {
-    handleNewIp(data.Sonos_IP as string);
-  }
-
-  if (!data?.settings?.Sonos_IP) {
-    DeskThing.addSettings({
-      Sonos_IP: {
-        value: '',
-        type: 'string',
-        label: 'Sonos Device IP',
-        description: 'Please enter the IP address of your Sonos device.',
-      },
-    })
-  }
-
-};
-
-const handleSettingsChange = async (settings: { [key: string]: SettingsType }) => {
-  if (settings.Sonos_IP && settings.Sonos_IP.type == 'string') {
-    handleNewIp(settings.Sonos_IP.value);
-  }
-};
-
-// Ensure settings stay updated
-DeskThing.on('settings', handleSettingsChange)
-
-
-const handleNewIp = async (ip: string) => {
-  if (!sonos) {
-    sonos = new SonosHandler();
-  } 
-  if (ip) {
-    sonos.deviceIP = ip;
-    sonos.getTrackInfo();
-    sonos.getFavorites();
-    sonos.getZoneGroupState();
+    sonos.deviceIP = data.Sonos_IP as string;
+    await sonos.getTrackInfo();
+    await sonos.getFavorites();
+    await sonos.getZoneGroupState();
     sonos.startPollingTrackInfo();
   } else {
     promptForIP();
   }
-}
+};
 
 const promptForIP = () => {
   DeskThing.getUserInput(
@@ -69,7 +37,11 @@ const promptForIP = () => {
     (data: any) => {
       if (data.payload.Sonos_IP) {
         DeskThing.saveData({ Sonos_IP: data.payload.Sonos_IP });
-        handleNewIp(data.payload.Sonos_IP);
+        sonos.deviceIP = data.payload.Sonos_IP;
+        sonos.getTrackInfo();
+        sonos.getFavorites();
+        sonos.getZoneGroupState();
+        sonos.startPollingTrackInfo();
       } else {
         DeskThing.sendError('No IP address provided!');
       }
@@ -78,11 +50,6 @@ const promptForIP = () => {
 };
 
 const handleGet = async (data: any) => {
-
-  if (!sonos) {
-    sonos = new SonosHandler();
-  }
-
   switch (data.request) {
     case 'playMode':
       const playMode = await sonos.getCurrentPlayMode();
@@ -162,10 +129,6 @@ const handleGet = async (data: any) => {
 };
 
 const handleSet = async (data: any) => {
-  if (!sonos) {
-    sonos = new SonosHandler();
-  }
-
   switch (data.request) {
     case 'next':
       await sonos.next();
@@ -204,7 +167,7 @@ const handleSet = async (data: any) => {
     case 'volume':  // This handles getting the current volume when the app starts
       await sonos.setVolume(data.payload);  // Assuming you have a `setVolume` function
       console.log('Set current volume:', data.payload);
-      DeskThing.send({
+      DeskThing.send('data', {
           type: 'currentVolume',
           payload: { volume: data.payload}
       });
@@ -253,11 +216,3 @@ const handleSet = async (data: any) => {
 };
 
 DeskThing.on('start', start);
-
-const stop = async () => {
-  if (sonos) {
-    sonos = null;
-  }
-}
-
-DeskThing.on('stop', stop)

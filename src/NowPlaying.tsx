@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './index.css';
-import { DeskThing } from 'deskthing-client';
+import DeskThing from 'deskthing-client';
 
 const NowPlaying = () => {
   const [songData, setSongData] = useState({

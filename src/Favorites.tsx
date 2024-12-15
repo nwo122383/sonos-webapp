@@ -1,8 +1,9 @@
 // src/components/Favorites.tsx
 
 import React, { useEffect, useState } from 'react';
-import { DeskThing, SocketData } from 'deskthing-client';
 import './Favorites.css';
+import { DeskThing as DK } from 'deskthing-server';
+const DeskThing = DK.getInstance();
 export { DeskThing };
 
 interface Favorite {
@@ -85,6 +86,7 @@ const Favorites = () => {
         setSelectedSpeakerUUIDs(event.data.payload.uuids);
       }
     };
+<<<<<<< HEAD
 
     window.addEventListener('message', handleMessage);
 
@@ -109,6 +111,18 @@ const Favorites = () => {
     };
   }, []);
 >>>>>>> parent of ae95c12 (Update Favorites.tsx)
+=======
+    const handleSelectedSpeaker = (socketData: SocketData) => {
+      if (socketData.type === 'selectedSpeakers' && socketData.payload.uuids) {
+        setSelectedSpeakerUUIDs(socketData.payload.uuids);
+      }
+    };
+    // You can also listen for the 'type' with deskthing
+    const removeFavoritesListener = DeskThing.on('favorites', handleFavorite)
+    const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState)
+    const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker)
+  
+>>>>>>> parent of 529e740 (Updated to v0.10!!)
 
   const extractIPAddress = (url: string) => {
     try {
