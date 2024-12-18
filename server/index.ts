@@ -4,10 +4,13 @@ import SonosHandler from './sonos';
 import { DeskThing, DataInterface, SettingsType } from 'deskthing-server';
 export { DeskThing };
 
-let sonos: SonosHandler;
+let sonos: SonosHandler | null;
 
 const start = async () => {
-  sonos = new SonosHandler();
+  if (!sonos) {
+    sonos = new SonosHandler();
+  }
+  
 
   DeskThing.on('get', handleGet);
   DeskThing.on('set', handleSet);
@@ -41,6 +44,10 @@ const handleSettingsChange = async (settings: { [key: string]: SettingsType }) =
     handleNewIp(settings.Sonos_IP.value);
   }
 };
+
+// Ensure settings stay updated
+DeskThing.on('settings', handleSettingsChange)
+
 const handleNewIp = async (ip: string) => {
   if (!sonos) {
     sonos = new SonosHandler();
@@ -68,6 +75,7 @@ const promptForIP = () => {
     (data: any) => {
       if (data.payload.Sonos_IP) {
         DeskThing.saveData({ Sonos_IP: data.payload.Sonos_IP });
+        handleNewIp(data.payload.Sonos_IP);
         sonos.deviceIP = data.payload.Sonos_IP;
         sonos.getTrackInfo();
         sonos.getFavorites();
