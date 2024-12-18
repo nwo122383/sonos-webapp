@@ -1,8 +1,7 @@
 // src/index.ts
 
 import SonosHandler from './sonos';
-import { DeskThing as DK } from 'deskthing-server';
-const DeskThing = DK.getInstance();
+import { DeskThing, DataInterface, SettingsType } from 'deskthing-server';
 export { DeskThing };
 
 let sonos: SonosHandler;
@@ -15,15 +14,47 @@ const start = async () => {
 
   const data = await DeskThing.getData();
   if (data && data.Sonos_IP) {
-    sonos.deviceIP = data.Sonos_IP as string;
+    handleNewIp(data.Sonos_IP as string);
     await sonos.getTrackInfo();
     await sonos.getFavorites();
     await sonos.getZoneGroupState();
     sonos.startPollingTrackInfo();
+    
+    if (!data?.settings?.Sonos_IP){
+      DeskThing.addSettings({
+        Sonos_IP: {
+          value: '',
+          type: 'string',
+          label: 'Sonos Device IP',
+          description: 'Please enter the IP address of your Sonos device.'
+        }
+      })
+    }
+
+
   } else {
     promptForIP();
   }
 };
+const handleSettingsChange = async (settings: { [key: string]: SettingsType }) => {
+  if (settings.Sonos_IP && settings.Sonos_IP.type == 'string') {
+    handleNewIp(settings.Sonos_IP.value);
+  }
+};
+const handleNewIp = async (ip: string) => {
+  if (!sonos) {
+    sonos = new SonosHandler();
+  } 
+  if (ip) {
+    sonos.deviceIP = ip;
+    sonos.getTrackInfo();
+    sonos.getFavorites();
+    sonos.getZoneGroupState();
+    sonos.startPollingTrackInfo();
+  } else {
+    promptForIP();
+  }
+}
 
 const promptForIP = () => {
   DeskThing.getUserInput(
@@ -50,10 +81,13 @@ const promptForIP = () => {
 };
 
 const handleGet = async (data: any) => {
+  if (!sonos) {
+    sonos = new SonosHandler();
+  }
   switch (data.request) {
     case 'playMode':
       const playMode = await sonos.getCurrentPlayMode();
-      DeskThing.sendDataToClient({
+      DeskThing.send({
         app: 'sonos-webapp',
         type: 'playMode',
         payload: { playMode },
@@ -74,7 +108,7 @@ const handleGet = async (data: any) => {
           try {
             const volume = await sonos.getCurrentVolume(speakerUUIDs);
             // Send the volume back to the frontend
-            DeskThing.sendDataToClient({
+            DeskThing.send({
               app: 'sonos-webapp',
               type: 'currentVolume',
               payload: { volume, uuid: speakerUUIDs[0] },
@@ -87,14 +121,14 @@ const handleGet = async (data: any) => {
         }
         break;
       case 'selectedVolumeSpeakers':
-      DeskThing.sendDataToClient({
+      DeskThing.send({
         app: 'sonos-webapp',
         type: 'selectedVolumeSpeakers',
         payload: { uuids: sonos.selectedVolumeSpeakers },
       });
       break;
     case 'selectedPlaybackSpeakers':
-      DeskThing.sendDataToClient({
+      DeskThing.send({
         app: 'sonos-webapp',
         type: 'selectedPlaybackSpeakers',
         payload: { uuids: sonos.selectedPlaybackSpeakers },
@@ -105,7 +139,7 @@ const handleGet = async (data: any) => {
         uuid,
         ...info,
       }));
-      DeskThing.sendDataToClient({
+      DeskThing.send({
         app: 'sonos-webapp',
         type: 'speakersList',
         payload: speakersArray,
@@ -116,7 +150,7 @@ const handleGet = async (data: any) => {
       await sonos.getZoneGroupState();
       break;
       case 'selectedSpeakers':
-        DeskThing.sendDataToClient({
+        DeskThing.send({
           app: 'sonos-webapp',
           type: 'selectedSpeakers',
           payload: { uuids: sonos.selectedSpeakerUUIDs },
@@ -189,7 +223,7 @@ const handleSet = async (data: any) => {
      await sonos.repeat(data.payload);
     break;
           case 'selectedVolumeSpeakers':
-        DeskThing.sendDataToClient({
+        DeskThing.send({
           app: 'sonos-webapp',
           type: 'selectedVolumeSpeakers',
           payload: { uuids: sonos.selectedVolumeSpeakers },

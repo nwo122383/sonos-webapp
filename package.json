@@ -7,8 +7,8 @@
   "scripts": {
     "dev-ip": "node dev-ip.js",
     "dev": "vite",
-    "build": "vite build && npm run build-server",
-    "build-server": "esbuild server/index.ts --bundle --platform=node --outdir=dist/server",
+    "build": "vite build && npm run build-server && node scripts/package.js",
+    "build-server": "esbuild server/index.ts --bundle --platform=node --outfile=dist/index.js",
     "setup": "node setup.js",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -17,8 +17,8 @@
     "@rollup/plugin-commonjs": "^28.0.1",
     "@rollup/plugin-node-resolve": "^15.3.0",
     "axios": "^1.7.5",
-    "deskthing-client": "latest",
-    "deskthing-server": "latest",
+    "deskthing-client": "^0.10.4",
+    "deskthing-server": "^0.10.3",
     "domparser": "^0.1.1",
     "postcss": "^8.4.49",
     "react": "^18.3.1",
@@ -34,8 +34,9 @@
     "@types/node": "^22.5.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-legacy": "^5.4.2",
+    "@vitejs/plugin-legacy": "^5.4.3",
     "@vitejs/plugin-react": "^4.3.1",
+    "archiver": "^7.0.1",
     "autoprefixer": "^10.4.20",
     "esbuild": "^0.19.2",
     "eslint": "^9.9.0",
@@ -44,6 +45,6 @@
     "tailwindcss": "^3.4.15",
     "typescript": "^5.5.4",
     "typescript-eslint": "^8.0.1",
-    "vite": "^5.4.1"
+    "vite": "^5.4.11"
   }
 }

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { DeskThing as DK, SongData } from 'deskthing-server';
+import { DeskThing , SongData } from 'deskthing-server';
 import xml2js from 'xml2js';
 
 // Shared singleton to store selected speaker information
@@ -261,7 +261,7 @@ async leaveGroup(speakerIP: string) {
       this.speakersList = speakersList;
   
       // Send to frontend
-      DK.getInstance().sendDataToClient({
+      DeskThing.send({
         app: 'sonos-webapp',
         type: 'zoneGroupState',
         payload: zoneGroupState,
@@ -551,7 +551,7 @@ async leaveGroup(speakerIP: string) {
 
       this.favoritesList = favoritesList;
 
-      DK.getInstance().sendDataToClient({ app: 'sonos-webapp', type: 'favorites', payload: favoritesList });
+      DeskThing.send({ app: 'sonos-webapp', type: 'favorites', payload: favoritesList });
     } catch (error: any) {
       this.sendError(`Error fetching favorites: ${error.response ? error.response.data : error.message}`);
     }
@@ -899,22 +899,23 @@ async leaveGroup(speakerIP: string) {
         this.sendLog(
           `Fetched Track Info: ${songData.artist} - ${songData.track_name}, Album - ${songData.album}, AlbumArtURI - ${albumArtURI}`
         );
-        DK.getInstance().sendDataToClient({ app: 'client', type: 'song', payload: songData });
-        DK.getInstance().sendDataToClient({ app: 'sonos-webapp', type: 'song', payload: songData });
-      } else {
-        this.sendLog('No valid track info received. Retaining last known track info.');
-      }
-    } catch (error: any) {
-            DK.getInstance().sendDataToClient({
-        app: 'sonos-webapp',
-        type: 'song',
-        payload: this.lastKnownSongData || {
-          track_name: 'Unknown Track',
-          artist: 'Unknown Artist',
-          album: 'Unknown Album',
-          thumbnail: null,
-        },
-      });
+      
+      DeskThing.send({ app: 'client', type: 'song', payload: songData });
+      DeskThing.send({ app: 'sonos-webapp', type: 'song', payload: songData });
+    } else {
+      this.sendLog('No valid track info received. Retaining last known track info.');
+    }
+  } catch (error: any) {
+          DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'song',
+      payload: this.lastKnownSongData || {
+        track_name: 'Unknown Track',
+        artist: 'Unknown Artist',
+        album: 'Unknown Album',
+        thumbnail: null,
+      },
+    });
     }
   }
 
@@ -995,11 +996,11 @@ async leaveGroup(speakerIP: string) {
     }
 
     // Send volume change back to frontend
-    DK.getInstance().sendDataToClient({
-        app: 'sonos-webapp',
-        type: 'volumeChange',
-        payload: { volume },
-    });
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'volumeChange',
+      payload: { volume },
+  });
 }
 
 
@@ -1090,11 +1091,11 @@ extractIPAddress(url: string): string | null {
 
   // Helper methods
   async sendLog(message: string) {
-    DK.getInstance().sendLog(message);
+    DeskThing.sendLog(message);
   }
 
   async sendError(message: string) {
-    DK.getInstance().sendError(message);
+    DeskThing.sendError(message);
   }
 
   // Check for refresh
