@@ -258,3 +258,11 @@ const handleSet = async (data: any) => {
 };
 
 DeskThing.on('start', start);
+
+const stop = async () => {
+  if (sonos) {
+    sonos = null;
+  }
+}
+
+DeskThing.on('stop', stop)
