@@ -39,10 +39,13 @@ class SonosHandler {
     if (this.speakersList && this.speakersList[uuid]) {
       return this.speakersList[uuid].ip;
     }
+    this.sendLog(`Speaker IP for UUID ${uuid} not found in cache. Refreshing zone group state...`);
     await this.getZoneGroupState();
     if (this.speakersList[uuid]) {
+      this.sendLog(`Found speaker IP after refresh for UUID ${uuid}: ${this.speakersList[uuid].ip}`);
       return this.speakersList[uuid].ip;
     }
+    this.sendLog(`Still no speaker IP found for UUID ${uuid} after refresh.`);
     return null;
   }
 
@@ -76,7 +79,7 @@ class SonosHandler {
 
   async execute(action: string, params: any = {}) {
     if (!this.deviceIP) {
-      throw new Error('Sonos device IP is not set.');
+      throw new Error('Sonos device IP is not set. Cannot execute action.');
     }
 
     params = params || {};
@@ -262,6 +265,7 @@ class SonosHandler {
       }
 
       const coordinatorUUID = await this.getDeviceUUID(coordinatorIP);
+
       const uri = `x-rincon:${coordinatorUUID}`;
       const originalDeviceIP = this.deviceIP;
 
