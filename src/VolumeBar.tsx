@@ -10,35 +10,46 @@ const VolumeBar = () => {
   const [selectedVolumeSpeakers, setSelectedVolumeSpeakers] = useState<string[]>([]);
 
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'currentVolume' && event.data.payload.volume !== undefined) {
-        setVolume(event.data.payload.volume);
-        setVisible(true);
-      } else if (event.data.type === 'selectedVolumeSpeakers' && event.data.payload.uuids) {
-        setSelectedVolumeSpeakers(event.data.payload.uuids);
-        fetchCurrentVolume(event.data.payload.uuids);
-      } else if (event.data.type === 'volumeChange' && event.data.payload.volume !== undefined) {
-        setVolume(event.data.payload.volume);
+    const handleCurrentVolume = (data: SocketData) => {
+      if (data.type === 'currentVolume' && data.payload.volume !== undefined) {
+        setVolume(data.payload.volume);
         setVisible(true);
       }
     };
 
-    window.addEventListener('message', handleMessage);
+    const handleSelectedVolumeSpeakers = (data: SocketData) => {
+      if (data.type === 'selectedVolumeSpeakers' && data.payload.uuids) {
+        setSelectedVolumeSpeakers(data.payload.uuids);
+        fetchCurrentVolume(data.payload.uuids);
+      }
+    };
+
+    const handleVolumeChange = (data: SocketData) => {
+      if (data.type === 'volumeChange' && data.payload.volume !== undefined) {
+        setVolume(data.payload.volume);
+        setVisible(true);
+      }
+    };
+
+    const removeCurrentVolumeListener = DeskThing.on('currentVolume', handleCurrentVolume);
+    const removeSelectedVolumeSpeakersListener = DeskThing.on('selectedVolumeSpeakers', handleSelectedVolumeSpeakers);
+    const removeVolumeChangeListener = DeskThing.on('volumeChange', handleVolumeChange);
 
     fetchSelectedVolumeSpeakers();
 
     return () => {
-      window.removeEventListener('message', handleMessage);
+      removeCurrentVolumeListener();
+      removeSelectedVolumeSpeakersListener();
+      removeVolumeChangeListener();
     };
   }, []);
 
   const fetchSelectedVolumeSpeakers = () => {
     DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'selectedVolumeSpeakers',
-        },
-          );
+      app: 'sonos-webapp',
+      type: 'get',
+      request: 'selectedVolumeSpeakers',
+    });
   };
 
   const fetchCurrentVolume = (speakerUUIDs: string[]) => {
@@ -46,15 +57,12 @@ const VolumeBar = () => {
       return;
     }
 
-    // For simplicity, fetch volume from the first selected speaker
     DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'volume',
-          payload: { speakerUUIDs },
-        },
-     
-    );
+      app: 'sonos-webapp',
+      type: 'get',
+      request: 'volume',
+      payload: { speakerUUIDs },
+    });
   };
 
   useEffect(() => {
@@ -83,23 +91,20 @@ const VolumeBar = () => {
         volumeChange = 5;
       }
 
-      if (volumeChange !== 0) {
-        const newVolume = Math.min(100, Math.max(0, (volume || 0) + volumeChange));
-
+      if (volumeChange !== 0 && typeof volume === 'number') {
+        const newVolume = Math.min(100, Math.max(0, volume + volumeChange));
         setVolume(newVolume);
         setVisible(true);
 
         DeskThing.send({
-              app: 'sonos-webapp',
-              type: 'set',
-              request: 'volumeChange',
-              payload: {
-                volume: newVolume,
-                speakerUUIDs: selectedVolumeSpeakers,
-              },
-            },
-          
-        );
+          app: 'sonos-webapp',
+          type: 'set',
+          request: 'volumeChange',
+          payload: {
+            volume: newVolume,
+            speakerUUIDs: selectedVolumeSpeakers,
+          },
+        });
       }
     };
 

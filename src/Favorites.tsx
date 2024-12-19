@@ -1,7 +1,7 @@
 // src/components/Favorites.tsx
 
 import React, { useEffect, useState } from 'react';
-import  { DeskThing,  SocketData } from 'deskthing-client';
+import { DeskThing, SocketData } from 'deskthing-client';
 import './Favorites.css';
 
 interface Favorite {
@@ -25,26 +25,23 @@ const Favorites = () => {
 
   useEffect(() => {
     DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'favorites',
-        },
-     
-    );
+      app: 'sonos-webapp',
+      type: 'get',
+      request: 'favorites',
+    });
 
     DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'zoneGroupState',
-        },
-      
-    );
+      app: 'sonos-webapp',
+      type: 'get',
+      request: 'zoneGroupState',
+    });
 
     const handleFavorite = (socketData: SocketData) => {
       if (socketData.type === 'favorites') {
         setFavorites(socketData.payload);
       }
     };
+
     const handleZoneGroupState = (socketData: SocketData) => {
       if (socketData.type === 'zoneGroupState') {
         const parser = new DOMParser();
@@ -77,23 +74,25 @@ const Favorites = () => {
         setSpeakers(allSpeakers);
       }
     };
+
     const handleSelectedSpeaker = (socketData: SocketData) => {
       if (socketData.type === 'selectedSpeakers' && socketData.payload.uuids) {
         setSelectedSpeakerUUIDs(socketData.payload.uuids);
       }
     };
-    // You can also listen for the 'type' with deskthing
-    const removeFavoritesListener = DeskThing.on('favorites', handleFavorite)
-    const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState)
-    const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker)
+
+    const removeFavoritesListener = DeskThing.on('favorites', handleFavorite);
+    const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState);
+    const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker);
+
     return () => {
       removeFavoritesListener();
       removeZoneGroupStateListener();
       removeSelectedSpeakersListener();
     };
-  }
-)
-       const extractIPAddress = (url: string) => {
+  }, []);
+
+  const extractIPAddress = (url: string) => {
     try {
       const parsedURL = new URL(url);
       return parsedURL.hostname;
@@ -112,14 +111,12 @@ const Favorites = () => {
         newSelected = [...prevSelected, uuid];
       }
 
-     DeskThing.send({
-            app: 'sonos-webapp',
-            type: 'set',
-            request: 'selectSpeakers',
-            payload: { uuids: newSelected },
-          },
-        
-      );
+      DeskThing.send({
+        app: 'sonos-webapp',
+        type: 'set',
+        request: 'selectSpeakers',
+        payload: { uuids: newSelected },
+      });
 
       return newSelected;
     });
@@ -132,16 +129,14 @@ const Favorites = () => {
     }
 
     DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'set',
-          request: 'playFavorite',
-          payload: {
-            uri: favorite.uri,
-            speakerUUIDs: selectedSpeakerUUIDs,
-          },
-        },
-  
-    );
+      app: 'sonos-webapp',
+      type: 'set',
+      request: 'playFavorite',
+      payload: {
+        uri: favorite.uri,
+        speakerUUIDs: selectedSpeakerUUIDs,
+      },
+    });
   };
 
   return (
@@ -152,27 +147,21 @@ const Favorites = () => {
         onClick={() => {
           if (selectedSpeakerUUIDs.length === speakers.length) {
             setSelectedSpeakerUUIDs([]);
-
             DeskThing.send({
-                  app: 'sonos-webapp',
-                  type: 'set',
-                  request: 'selectSpeakers',
-                  payload: { uuids: [] },
-                },
-           
-            );
+              app: 'sonos-webapp',
+              type: 'set',
+              request: 'selectSpeakers',
+              payload: { uuids: [] },
+            });
           } else {
             const allUUIDs = speakers.map((speaker) => speaker.uuid);
             setSelectedSpeakerUUIDs(allUUIDs);
-
             DeskThing.send({
-                  app: 'sonos-webapp',
-                  type: 'set',
-                  request: 'selectSpeakers',
-                  payload: { uuids: allUUIDs },
-                },
-         
-            );
+              app: 'sonos-webapp',
+              type: 'set',
+              request: 'selectSpeakers',
+              payload: { uuids: allUUIDs },
+            });
           }
         }}
         className="select-all-button"
