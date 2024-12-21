@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { DeskThing, SocketData } from 'deskthing-client';
+import React, { useEffect, useState } from 'react';
+import { DeskThing } from 'deskthing-client';
 import './VolumeControl.css';
 
 interface Speaker {
@@ -8,58 +8,59 @@ interface Speaker {
   zoneName: string;
 }
 
-const VolumeControl = () => {
+interface VolumeControlProps {
+  setCurrentVolume: (volume: number) => void;
+  selectedVolumeSpeakers: string[];
+  setSelectedVolumeSpeakers: (uuids: string[]) => void;
+}
+
+const VolumeControl: React.FC<VolumeControlProps> = ({ setCurrentVolume, selectedVolumeSpeakers, setSelectedVolumeSpeakers }) => {
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
-  const [selectedVolumeSpeakers, setSelectedVolumeSpeakers] = useState<string[]>([]);
   const [volumeLevels, setVolumeLevels] = useState<{ [uuid: string]: number }>({});
-  const volumeControlRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Fetch the list of speakers
     fetchSpeakers();
-    // Fetch selected volume speakers on mount
     fetchSelectedVolumeSpeakers();
   }, []);
 
   const fetchSpeakers = () => {
     DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'speakersList',
-        },
-      
-    );
+      app: 'sonos-webapp',
+      type: 'get',
+      request: 'speakersList',
+    });
   };
 
   const fetchSelectedVolumeSpeakers = () => {
     DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'selectedVolumeSpeakers',
-        },
-       );
+      app: 'sonos-webapp',
+      type: 'get',
+      request: 'selectedVolumeSpeakers',
+    });
   };
 
   const fetchCurrentVolume = (uuid: string) => {
     DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'volume',
-          payload: { speakerUUIDs: [uuid] },
-        },
-     
-    );
+      app: 'sonos-webapp',
+      type: 'get',
+      request: 'volume',
+      payload: { speakerUUIDs: [uuid] },
+    });
   };
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'speakersList') {
-        setSpeakers(event.data.payload);
-      } else if (event.data.type === 'currentVolume') {
-        const { uuid, volume } = event.data.payload;
+      const data = event.data;
+      if (data.type === 'speakersList') {
+        setSpeakers(data.payload);
+      } else if (data.type === 'currentVolume') {
+        const { uuid, volume } = data.payload;
         setVolumeLevels((prev) => ({ ...prev, [uuid]: volume }));
-      } else if (event.data.type === 'volumeChange' && event.data.payload.volume !== undefined) {
-        const { volume } = event.data.payload;
+        if (selectedVolumeSpeakers.includes(uuid)) {
+          setCurrentVolume(volume);
+        }
+      } else if (data.type === 'volumeChange' && data.payload.volume !== undefined) {
+        const { volume } = data.payload;
         setVolumeLevels((prev) => {
           const updatedLevels = { ...prev };
           selectedVolumeSpeakers.forEach((uuid) => {
@@ -67,21 +68,16 @@ const VolumeControl = () => {
           });
           return updatedLevels;
         });
-      } else if (event.data.type === 'selectedVolumeSpeakers' && event.data.payload.uuids) {
-        setSelectedVolumeSpeakers(event.data.payload.uuids);
-        // Fetch the current volume for the selected speakers
-        event.data.payload.uuids.forEach((uuid: string) => {
-          fetchCurrentVolume(uuid);
-        });
+        setCurrentVolume(volume);
+      } else if (data.type === 'selectedVolumeSpeakers' && data.payload.uuids) {
+        setSelectedVolumeSpeakers(data.payload.uuids);
+        data.payload.uuids.forEach((uuid: string) => fetchCurrentVolume(uuid));
       }
     };
 
     window.addEventListener('message', handleMessage);
-
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
-  }, []); // Removed dependencies to prevent unnecessary re-renders
+    return () => window.removeEventListener('message', handleMessage);
+  }, [selectedVolumeSpeakers, setCurrentVolume]);
 
   const selectVolumeSpeaker = (uuid: string) => {
     setSelectedVolumeSpeakers((prevSelected) => {
@@ -92,15 +88,12 @@ const VolumeControl = () => {
         newSelected = [...prevSelected, uuid];
       }
 
-      // Notify backend of selected volume speakers
       DeskThing.send({
-            app: 'sonos-webapp',
-            type: 'set',
-            request: 'selectVolumeSpeakers',
-            payload: { uuids: newSelected },
-          },
-        
-      );
+        app: 'sonos-webapp',
+        type: 'set',
+        request: 'selectVolumeSpeakers',
+        payload: { uuids: newSelected },
+      });
 
       // Fetch the current volume for the newly selected speaker
       if (!prevSelected.includes(uuid)) {
@@ -111,67 +104,29 @@ const VolumeControl = () => {
     });
   };
 
-  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (selectedVolumeSpeakers.length === 0) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    let volumeChange = 0;
-    if (event.deltaX < 0) {
-      volumeChange = -5;
-    } else if (event.deltaX > 0) {
-      volumeChange = 5;
-    }
-
-    if (volumeChange !== 0) {
-      selectedVolumeSpeakers.forEach((uuid) => {
-        const currentVolume = volumeLevels[uuid] || 0;
-        const newVolume = Math.min(100, Math.max(0, currentVolume + volumeChange));
-
-        setVolumeLevels((prev) => ({ ...prev, [uuid]: newVolume }));
-
-        DeskThing.send({
-              app: 'sonos-webapp',
-              type: 'set',
-              request: 'volumeChange',
-              payload: {
-                volume: newVolume,
-                speakerUUIDs: [uuid],
-              },
-            },
-          
-        );
-      });
-    }
-  };
-
   const adjustVolume = (uuid: string, delta: number) => {
     const currentVolume = volumeLevels[uuid] || 0;
     const newVolume = Math.min(100, Math.max(0, currentVolume + delta));
-
     setVolumeLevels((prev) => ({ ...prev, [uuid]: newVolume }));
 
+    if (selectedVolumeSpeakers.includes(uuid)) {
+      setCurrentVolume(newVolume);
+    }
+
     DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'set',
-          request: 'volumeChange',
-          payload: {
-            volume: newVolume,
-            speakerUUIDs: [uuid],
-          },
-        },
-     
-    );
+      app: 'sonos-webapp',
+      type: 'set',
+      request: 'volumeChange',
+      payload: {
+        volume: newVolume,
+        speakerUUIDs: [uuid],
+      },
+    });
   };
 
   return (
     <div
       id="volume-control"
-      onWheel={handleWheel}
-      ref={volumeControlRef}
       style={{ overflowY: 'auto', height: '100%' }}
     >
       <h2>Volume Speaker Selection</h2>
@@ -184,32 +139,20 @@ const VolumeControl = () => {
                 <strong>{speaker.zoneName}</strong>
               </div>
               <div className="speaker-controls">
-  <button
-    onClick={() => adjustVolume(speaker.uuid, -5)}
-    className="volume-minus-button"
-  >
-    -
-  </button>
-  <button
-    onClick={() => selectVolumeSpeaker(speaker.uuid)}
-    className={`select-speaker-button ${isSelected ? 'selected' : ''}`}
-  >
-    {isSelected ? 'Selected' : 'Select'}
-  </button>
-  <button
-    onClick={() => adjustVolume(speaker.uuid, 5)}
-    className="volume-plus-button"
-  >
-    +
-  </button>
-  {isSelected && (
-    <div className="volume-display">
-      Volume:{' '}
-      {volumeLevels[speaker.uuid] !== undefined ? volumeLevels[speaker.uuid] : '...'}%
-    </div>
-  )}
-</div>
-               
+                <button onClick={() => adjustVolume(speaker.uuid, -5)} className="volume-minus-button">-</button>
+                <button
+                  onClick={() => selectVolumeSpeaker(speaker.uuid)}
+                  className={`select-speaker-button ${isSelected ? 'selected' : ''}`}
+                >
+                  {isSelected ? 'Selected' : 'Select'}
+                </button>
+                <button onClick={() => adjustVolume(speaker.uuid, 5)} className="volume-plus-button">+</button>
+                {isSelected && (
+                  <div className="volume-display">
+                    Volume: {volumeLevels[speaker.uuid] !== undefined ? volumeLevels[speaker.uuid] : '...'}%
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
