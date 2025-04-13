@@ -20,14 +20,14 @@
   cursor: pointer;
   background-color: #000000;
   border: 1px solid #ccc;
-  color: #fff;
+  color: #ffffff;
   border-radius: 4px;
   margin: 0; /* Add horizontal spacing between buttons */
   font-size: 14px;
 }
 
 .select-speaker-button.selected {
-  background-color: #1890ff;
+  background-color: #000000;
   color: #fff;
 }
 
