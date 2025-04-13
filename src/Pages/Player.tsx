@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DeskThing, SongData } from 'deskthing-client'// Assuming MusicStore exists in your Stores directory
+import { SongData } from '@deskthing/types'
+import { DeskThing } from '@deskthing/client'// Assuming MusicStore exists in your Stores directory
 import Loading from './Loading'; // Import the Loading component we created
 import { ScrollingText } from '../components/ScrollingText'; // Import the ScrollingText component we created
 import './Player.css';

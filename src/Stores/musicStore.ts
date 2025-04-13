@@ -1,4 +1,5 @@
-import { DeskThing, SongData } from 'deskthing-client';
+import { SongData } from '@deskthing/types'
+import { DeskThing } from '@deskthing/client';
 import { Playlist, SpotifyAudioAnalysis, AudioFeaturesResponse } from '../types/spotify';
 
 type MusicListener = (data: SongData | Playlist[] | SpotifyAudioAnalysis | AudioFeaturesResponse | null) => void;

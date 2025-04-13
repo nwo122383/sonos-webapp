@@ -1,0 +1,46 @@
+.volume-bar-container {
+  position: fixed;
+  right: 35px;
+  bottom: 20px;
+  height: 300px;
+  width: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: sans-serif;
+  z-index: 999; /* ensures it’s on top */
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.volume-bar-container.fade-in {
+  opacity: 1;
+}
+
+.volume-bar-container.fade-out {
+  opacity: 0;
+}
+
+.volume-percentage-label {
+  color: #ffffff;
+  font-size: 1.25rem;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.volume-bar {
+  background-color: #333;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+}
+
+.volume-fill {
+  background-color: limegreen;
+  width: 100%;
+  transition: height 0.3s ease;
+}

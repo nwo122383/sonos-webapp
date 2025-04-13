@@ -1,0 +1,33 @@
+.now-playing {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    background-color: #111;
+    border-bottom: 1px solid #333;
+    color: white;
+  }
+  
+  .album-art {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    margin-right: 1rem;
+    border-radius: 4px;
+  }
+  
+  .track-details {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .track-title {
+    font-size: 1.2rem;
+    font-weight: bold;
+  }
+  
+  .track-artist,
+  .track-album {
+    font-size: 0.9rem;
+    opacity: 0.8;
+  }
+  

@@ -1,0 +1,28 @@
+.volume-buttons {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.volume-plus-button,
+.volume-minus-button {
+  background-color: #1e90ff;
+  color: white;
+  border: none;
+  padding: 0.5rem 1.2rem;
+  margin: 0 0.5rem;
+  font-size: 1.4rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.volume-plus-button:hover,
+.volume-minus-button:hover {
+  background-color: #007acc;
+}
+
+
+
+#volume-control h2 {
+  color: #ffffff; /* or any color you want */
+}

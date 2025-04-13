@@ -1,0 +1,126 @@
+/* src/favorites.css */
+
+
+
+.favorites-section {
+  width: 100%;
+  overflow-y: auto;
+  padding-bottom: 20px; /* Extra padding at the bottom */
+  box-sizing: border-box;
+}
+#favorites-container {
+  width: 100%;
+  overflow-y: auto;
+  padding: 10px;
+  padding-bottom: 20px; /* Extra padding at the bottom to prevent items from being cut off */
+  box-sizing: border-box;
+  color:#ffffff
+}
+
+#favorites-container h2 {
+  width: 100%;
+  overflow-y: auto;
+  padding: 10px;
+  padding-bottom: 20px; /* Extra padding at the bottom to prevent items from being cut off */
+  box-sizing: border-box;
+  color:#ffffff
+}
+
+.favorites-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr); /* 4 columns */
+  gap: 10px; /* Space between items */
+  padding-bottom: 40px; /* Additional padding at the bottom */
+  width: 100%;
+}
+
+.favorite-item {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.favorite-item img {
+  width: 100%; 
+  height: auto;
+  border-radius: 4px;
+}
+
+.favorite-title {
+  margin-top: 5px;
+  font-size: 14px;
+  text-align: center;
+  word-wrap: break-word;
+}
+
+h2 {
+  color: #ffffff; /* Darker text color for better contrast */
+  font-size: 18px;
+  margin-bottom: 10px;
+  margin-top: 0;
+}
+
+/* Remove conflicting styles */
+.speakers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.speaker-item {
+  border: 1px solid #ccc;
+  padding: 15px;
+  margin-bottom: 10px;
+}
+
+.speaker-item.selected {
+  border-color: #4caf50;
+}
+
+.speaker-info {
+  font-size: 18px;
+  margin-bottom: 10px;
+}
+
+.speaker-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.select-speaker-button,
+.group-button {
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.select-speaker-button.selected {
+  background-color: #00000039;
+  color: rgba(255, 255, 255, 0.589);
+}
+
+.select-speaker-button {
+  background-color: #008cba;
+  color: white;
+  border: none;
+}
+
+.select-all-button {
+  margin-bottom: 10px;
+  padding: 10px 20px;
+  font-size: 16px;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.controls button {
+  padding: 10px 20px;
+  font-size: 16px;
+}

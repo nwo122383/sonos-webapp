@@ -1,79 +1,91 @@
-import React, { useState, useEffect } from 'react';
-import TrackInfo from './TrackInfo';
-import Favorites from './Favorites';
-import VolumeBar from './VolumeBar';
-import VolumeControl from './VolumeControl';
-import PlaybackControl from './PlaybackControl';
-import Controls from './Controls';
-import './index.css';
-import { DeskThing } from 'deskthing-client';
+// src/App.tsx
 
-const App = () => {
+import React, { useEffect, useContext, useState } from 'react';
+import VolumeBar from './components/VolumeBar';
+import VolumeControl from './components/VolumeControl';
+import Favorites from './components/Favorites';
+import { DeskThing } from '@deskthing/client';
+import { SettingsContext } from './contexts/SettingsContext';
+import './index.css';
+
+const App: React.FC = () => {
+  const { settings, isReady } = useContext(SettingsContext);
   const [currentVolume, setCurrentVolume] = useState<number>(50);
   const [selectedVolumeSpeakers, setSelectedVolumeSpeakers] = useState<string[]>([]);
+  const [volumeBarVisible, setVolumeBarVisible] = useState<boolean>(false);
+  const sonosIp = settings?.sonos_ip ?? '192.168.4.109';
 
-  useEffect(() => {
-    // Fetch initial volume and selected speakers
-    DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'selectedVolumeSpeakers' });
-    DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'volume' });
-
-    const handleVolumeChange = (data: any) => {
-      if (data.type === 'volumeChange' && data.payload.volume !== undefined) {
-        setCurrentVolume(data.payload.volume);
-      }
+  // Bounce function for volume bar visibility
+  const bounceVolumeBar = (() => {
+    let timeout: NodeJS.Timeout | null = null;
+    return () => {
+      setVolumeBarVisible(true);
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => setVolumeBarVisible(false), 5000);
     };
+  })();
 
-    const handleSelectedVolumeSpeakers = (data: any) => {
-      if (data.type === 'selectedVolumeSpeakers' && data.payload.uuids) {
+  // Poll volume every 5 seconds
+  useEffect(() => {
+    if (!isReady) return;
+
+    const interval = setInterval(() => {
+      DeskThing.send({ type: 'get', request: 'currentVolume' });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isReady]);
+
+  // Initial data setup
+  useEffect(() => {
+    if (!isReady) return;
+
+    DeskThing.send({ type: 'get', request: 'selectedVolumeSpeakers' });
+    DeskThing.send({ type: 'get', request: 'currentVolume' });
+
+    const volumeListener = DeskThing.on('volumeChange', (data) => {
+      if (data.payload?.volume !== undefined) {
+        setCurrentVolume(data.payload.volume);
+        bounceVolumeBar();
+      }
+    });
+
+    const speakerListener = DeskThing.on('selectedVolumeSpeakers', (data) => {
+      if (data.payload?.uuids) {
         setSelectedVolumeSpeakers(data.payload.uuids);
       }
-    };
-
-    const volumeChangeListener = DeskThing.on('volumeChange', handleVolumeChange);
-    const selectedSpeakersListener = DeskThing.on('selectedVolumeSpeakers', handleSelectedVolumeSpeakers);
+    });
 
     return () => {
-      volumeChangeListener();
-      selectedSpeakersListener();
+      volumeListener();
+      speakerListener();
     };
-  }, []);
+  }, [sonosIp, isReady]);
 
+  // Handle wheel scrolling
   useEffect(() => {
-    const handleGlobalWheel = (event: WheelEvent) => {
-      if (selectedVolumeSpeakers.length === 0) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const volumeChange = event.deltaX > 0 ? 5 : -5; // Adjust by 5% per scroll with deltaX
-      const newVolume = Math.min(100, Math.max(0, currentVolume + volumeChange));
-      setCurrentVolume(newVolume);
-
+    const handleWheel = (event: WheelEvent) => {
+      const delta = event.deltaX < 0 ? -1 : 1;
       DeskThing.send({
         app: 'sonos-webapp',
         type: 'set',
-        request: 'volumeChange',
-        payload: {
-          volume: newVolume,
-          speakerUUIDs: selectedVolumeSpeakers,
-        },
+        request: 'adjustVolume',
+        payload: { delta },
       });
+      bounceVolumeBar();
+      event.preventDefault();
     };
 
-    window.addEventListener('wheel', handleGlobalWheel, { passive: false });
-
-    return () => {
-      window.removeEventListener('wheel', handleGlobalWheel);
-    };
-  }, [currentVolume, selectedVolumeSpeakers]);
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, []);
 
   return (
     <div className="app-container">
-      <VolumeBar currentVolume={currentVolume} />
+      <VolumeBar currentVolume={currentVolume} visible={volumeBarVisible} />
       <div className="top-controls">
-        <VolumeControl 
+        <VolumeControl
+          currentVolume={currentVolume}
           setCurrentVolume={setCurrentVolume}
           selectedVolumeSpeakers={selectedVolumeSpeakers}
           setSelectedVolumeSpeakers={setSelectedVolumeSpeakers}
