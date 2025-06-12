@@ -112,6 +112,17 @@ export const setupActions = () => {
           await sonos.previous(sonos.deviceIP);
         }
         break;
+      case 'shuffle':
+        if (sonos.deviceIP) {
+        await sonos.shuffle(sonos.deviceIP);
+        }
+        break;
+      case 'repeat':
+        if (sonos.deviceIP) {
+        await sonos.repeat(sonos.deviceIP);
+        }
+        break;
     }
+    
   });
 };

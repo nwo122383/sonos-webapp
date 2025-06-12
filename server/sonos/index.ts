@@ -603,49 +603,49 @@ export class SonosHandler {
       this.sendError(`Error fetching favorites: ${error.response ? error.response.data : error.message}`);
     }
   }
-  async getSelectedVolumeSpeakers() {
-    try {
-      const selected = this.volumeSpeakers;
-      if (!selected.length) {
-        const allUUIDs = Object.keys(this.speakersList);
-        if (allUUIDs.length > 0) {
-          this.volumeSpeakers = [allUUIDs[0]];
-          DeskThing.sendLog(`[getSelectedVolumeSpeakers] No speakers selected. Fallback to: ${allUUIDs[0]}`);
-        } else {
-          DeskThing.sendLog('[getSelectedVolumeSpeakers] No speakers available to select.');
-        }
-      }
-      DeskThing.send({
-        app: 'sonos-webapp',
-        type: 'selectedVolumeSpeakers',
-        payload: this.volumeSpeakers,
-      });
-    } catch (err) {
-      this.sendError('Error getting selected volume speakers: ' + err.message);
-    }
-  }
+  //async getSelectedVolumeSpeakers() {
+    //try {
+      //const selected = this.volumeSpeakers;
+      //if (!selected.length) {
+       // const allUUIDs = Object.keys(this.speakersList);
+       // if (allUUIDs.length > 0) {
+        //  this.volumeSpeakers = [allUUIDs[0]];
+       //   DeskThing.sendLog(`[getSelectedVolumeSpeakers] No speakers selected. Fallback to: ${allUUIDs[0]}`);
+       // } else {
+       //   DeskThing.sendLog('[getSelectedVolumeSpeakers] No speakers available to select.');
+      //  }
+      //}
+      //DeskThing.send({
+       // app: 'sonos-webapp',
+        //type: 'selectedVolumeSpeakers',
+       // payload: this.volumeSpeakers,
+     // });
+   // } catch (err) {
+   //   this.sendError('Error getting selected volume speakers: ' + err.message);
+   // }
+ // }
   
-  async getSelectedPlaybackSpeakers() {
-    try {
-      const selected = this.playbackSpeakers;
-      if (!selected.length) {
-        const allUUIDs = Object.keys(this.speakersList);
-        if (allUUIDs.length > 0) {
-          this.playbackSpeakers = [allUUIDs[0]];
-          DeskThing.sendLog(`[getSelectedPlaybackSpeakers] No speakers selected. Fallback to: ${allUUIDs[0]}`);
-        } else {
-          DeskThing.sendLog('[getSelectedPlaybackSpeakers] No speakers available to select.');
-        }
-      }
-      DeskThing.send({
-        app: 'sonos-webapp',
-        type: 'selectedPlaybackSpeakers',
-        payload: this.playbackSpeakers,
-      });
-    } catch (err) {
-      this.sendError('Error getting selected playback speakers: ' + err.message);
-    }
-  }
+ // async getSelectedPlaybackSpeakers() {
+  //  try {
+      //const selected = this.playbackSpeakers;
+     // if (!selected.length) {
+      //  const allUUIDs = Object.keys(this.speakersList);
+      //  if (allUUIDs.length > 0) {
+      //    this.playbackSpeakers = [allUUIDs[0]];
+      //    DeskThing.sendLog(`[getSelectedPlaybackSpeakers] No speakers selected. Fallback to: ${allUUIDs[0]}`);
+      //  } else {
+      //    DeskThing.sendLog('[getSelectedPlaybackSpeakers] No speakers available to select.');
+      //  }
+     // }
+     // DeskThing.send({
+      //  app: 'sonos-webapp',
+      //  type: 'selectedPlaybackSpeakers',
+      //  payload: this.playbackSpeakers,
+     // });
+    //} catch (err) {
+     // this.sendError('Error getting selected playback speakers: ' + err.message);
+   // }
+ // }
   
   
   async playFavoriteOnSpeakers(uri: string, speakerUUIDs: string[]) {
@@ -713,7 +713,7 @@ export class SonosHandler {
       } else {
         await this.setAVTransportURI(uri, metaData);
         await this.play();
-        this.startTrackInfoPolling();
+        //this.startTrackInfoPolling();
         this.sendLog(`Playing favorite: ${item['dc:title']}`);
       }
 
