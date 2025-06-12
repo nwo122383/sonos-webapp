@@ -5,10 +5,10 @@ import sonos from './sonos';
 import { SocketData } from '@deskthing/types';
 
 export const setupActions = () => {
-  DeskThing.sendLog('[Sonos] Registering DeskThing listeners.');
+  console.log('[Sonos] Registering DeskThing listeners.');
 
   DeskThing.on('set', async (socketData: SocketData) => {
-    DeskThing.sendLog(`[Sonos] Received SET: ${JSON.stringify(socketData)}`);
+    console.log(`[Sonos] Received SET: ${JSON.stringify(socketData)}`);
 
     const { request, payload } = socketData;
 
@@ -32,7 +32,7 @@ export const setupActions = () => {
       }
     }
   } else {
-    DeskThing.sendError('Invalid volumeChange payload');
+    console.error('Invalid volumeChange payload');
   }
   break;
 
@@ -70,7 +70,7 @@ export const setupActions = () => {
             if (uuids.length > 0) {
               await sonos.playFavoriteOnSpeakers(payload.uri, uuids);
             } else {
-              DeskThing.sendWarning('[playFavorite] No speakers selected.');
+              console.warn('[playFavorite] No speakers selected.');
             }
           }
           break;
@@ -112,17 +112,6 @@ export const setupActions = () => {
           await sonos.previous(sonos.deviceIP);
         }
         break;
-      case 'shuffle':
-        if (sonos.deviceIP) {
-        await sonos.shuffle(sonos.deviceIP);
-        }
-        break;
-      case 'repeat':
-        if (sonos.deviceIP) {
-        await sonos.repeat(sonos.deviceIP);
-        }
-        break;
     }
-    
   });
 };

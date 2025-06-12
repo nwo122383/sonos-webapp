@@ -8,7 +8,7 @@ export const setupTasks = () => {
     try {
       await sonos.getTrackInfo();
     } catch (err) {
-      DeskThing.sendError(`[Polling] Failed to get now playing: ${err}`);
+      console.error(`[Polling] Failed to get now playing: ${err}`);
     }
   }, 10000);
 };

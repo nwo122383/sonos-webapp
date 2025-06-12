@@ -37,16 +37,16 @@ export const setupSettings = async () => {
   };
 
   DeskThing.initSettings(settings);
-  DeskThing.sendLog('[Sonos] Settings registered with DeskThing.');
+  console.log('[Sonos] Settings registered with DeskThing.');
 
   const savedSettings = await DeskThing.getSettings();
-  DeskThing.sendLog(`Settings received: ${JSON.stringify(savedSettings)}`);
+  console.log(`Settings received: ${JSON.stringify(savedSettings)}`);
 
   const ip = savedSettings?.sonos_ip?.value;
   if (ip) {
     sonos.deviceIP = ip;
-    DeskThing.sendLog(`[Sonos] IP set on handler: ${ip}`);
+    console.log(`[Sonos] IP set on handler: ${ip}`);
   } else {
-    DeskThing.sendWarning('[Sonos] No IP found in settings.');
+    console.warn('[Sonos] No IP found in settings.');
   }
 };

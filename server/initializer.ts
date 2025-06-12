@@ -31,5 +31,5 @@ export const initialize = async () => {
 // Example event listener (extendable in future)
 DeskThing.on(DESKTHING_EVENTS.SOCKET, (data: SocketData) => {
   // Optional logging or debugging hook
-  // DeskThing.sendLog(`Received raw socket data: ${JSON.stringify(data)}`);
+  // console.log(`Received raw socket data: ${JSON.stringify(data)}`);
 });

@@ -5,10 +5,10 @@ import sonos from './sonos';
 import { SocketData } from '@deskthing/types';
 
 export const setupGetters = () => {
-  DeskThing.sendLog('[Sonos] Registering GET listeners.');
+  console.log('[Sonos] Registering GET listeners.');
 
   DeskThing.on('get', async (socketData: SocketData) => {
-    DeskThing.sendLog(`[Sonos] Received GET: ${JSON.stringify(socketData)}`);
+    console.log(`[Sonos] Received GET: ${JSON.stringify(socketData)}`);
 
     const { request, payload } = socketData;
 
@@ -34,17 +34,17 @@ export const setupGetters = () => {
         },
       });
     } catch (err: any) {
-      DeskThing.sendError(`Error fetching volume: ${err.message}`);
+      console.error(`Error fetching volume: ${err.message}`);
     }
   } else {
-    DeskThing.sendError('No speaker UUIDs provided for volume request');
+    console.error('No speaker UUIDs provided for volume request');
   }
   break;
 
   case 'currentVolume': {
     const uuids = data.payload?.speakerUUIDs || sonos.selectedVolumeSpeakers;
     if (!uuids || uuids.length === 0) {
-      DeskThing.sendError('No speaker UUIDs provided for volume request');
+      console.error('No speaker UUIDs provided for volume request');
       return;
     }
   
@@ -56,7 +56,7 @@ export const setupGetters = () => {
         payload: { volume, uuid: uuids[0] },
       });
     } catch (error: any) {
-      DeskThing.sendError(`Error fetching volume: ${error.message}`);
+      console.error(`Error fetching volume: ${error.message}`);
     }
     break;
   }
