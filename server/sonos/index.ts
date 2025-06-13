@@ -633,7 +633,7 @@ export class SonosHandler {
       <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
         <s:Body>
           <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
-            <ObjectID>${id}</ObjectID>
+            <ObjectID>${this.escape(id)}</ObjectID>
             <BrowseFlag>BrowseDirectChildren</BrowseFlag>
             <Filter>*</Filter>
             <StartingIndex>0</StartingIndex>
