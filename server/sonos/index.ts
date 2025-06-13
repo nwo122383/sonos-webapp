@@ -561,8 +561,8 @@ export class SonosHandler {
 
       this.sendLog(`Parsed Favorites XML`);
 
-      const metaParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
-      const metaResult = await metaParser.parseStringPromise(favoritesResult);
+      const metadataParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+      const metaResult = await metadataParser.parseStringPromise(favoritesResult);
       let items = metaResult['DIDL-Lite'] && metaResult['DIDL-Lite']['item'];
 
       if (!items) {
@@ -576,14 +576,15 @@ export class SonosHandler {
       const favoritesList = await Promise.all(
         items.map(async (item: any) => {
           const title = item['dc:title'] || 'Unknown Title';
-          const uri = item['res'] || null;
+          const resVal = item['res'];
+          const uri = typeof resVal === 'object' ? resVal._ : resVal || null;
           const albumArtURI = item['upnp:albumArtURI'] || null;
           const metaData = item['r:resMD'] || item['resMD'] || '';
 
           let upnpClass = item['upnp:class'] || '';
           if (!upnpClass && metaData) {
             try {
-              const meta = await metaParser.parseStringPromise(metaData);
+              const meta = await metadataParser.parseStringPromise(metaData);
               const metaItem = meta['DIDL-Lite']?.item || meta['DIDL-Lite']?.container;
               upnpClass = metaItem?.['upnp:class'] || '';
             } catch (err: any) {
@@ -591,7 +592,7 @@ export class SonosHandler {
             }
           }
 
-          const isContainer = upnpClass.includes('object.container');
+          const isContainer = upnpClass.includes('object.container') || (!uri && !!item?.$?.id);
           const id = item?.$?.id || '';
 
           let formattedAlbumArtURI = albumArtURI;
@@ -625,75 +626,92 @@ export class SonosHandler {
       throw new Error('Sonos device IP is not set.');
     }
 
-    const url = `http://${this.deviceIP}:${this.port}/MediaServer/ContentDirectory/Control`;
-    const soapAction = '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"';
-    const request = `<?xml version="1.0" encoding="utf-8"?>
-      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-        <s:Body>
-          <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
-            <ObjectID>${id}</ObjectID>
-            <BrowseFlag>BrowseDirectChildren</BrowseFlag>
-            <Filter>*</Filter>
-            <StartingIndex>0</StartingIndex>
-            <RequestedCount>100</RequestedCount>
-            <SortCriteria></SortCriteria>
-          </u:Browse>
-        </s:Body>
-      </s:Envelope>`;
+    try {
+      const url = `http://${this.deviceIP}:${this.port}/MediaServer/ContentDirectory/Control`;
+      const soapAction = '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"';
+      const request = `<?xml version="1.0" encoding="utf-8"?>
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+            <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
+              <ObjectID>${id}</ObjectID>
+              <BrowseFlag>BrowseDirectChildren</BrowseFlag>
+              <Filter>*</Filter>
+              <StartingIndex>0</StartingIndex>
+              <RequestedCount>100</RequestedCount>
+              <SortCriteria></SortCriteria>
+            </u:Browse>
+          </s:Body>
+        </s:Envelope>`;
 
-    const response = await axios({
-      method: 'POST',
-      url,
-      headers: { 'SOAPAction': soapAction, 'Content-Type': 'text/xml; charset=utf-8' },
-      data: request,
-    });
+      const response = await axios({
+        method: 'POST',
+        url,
+        headers: { 'SOAPAction': soapAction, 'Content-Type': 'text/xml; charset=utf-8' },
+        data: request,
+      });
 
-    const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
-    const parsed = await parser.parseStringPromise(response.data);
-    const resultStr = parsed['s:Envelope']['s:Body']['u:BrowseResponse']['Result'];
+      const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+      const parsed = await parser.parseStringPromise(response.data);
+      const resultStr = parsed['s:Envelope']['s:Body']['u:BrowseResponse']['Result'];
 
-    const metaParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
-    const metaResult = await metaParser.parseStringPromise(resultStr);
-    const rootAttrs = metaResult['DIDL-Lite'].$ || {};
-    let containers: any[] = metaResult['DIDL-Lite']['container'] || [];
-    let items: any[] = metaResult['DIDL-Lite']['item'] || [];
+      const metadataParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+      const metaResult = await metadataParser.parseStringPromise(resultStr);
+      const rootAttrs = metaResult['DIDL-Lite'].$ || {};
+      let containers: any[] = metaResult['DIDL-Lite']['container'] || [];
+      let items: any[] = metaResult['DIDL-Lite']['item'] || [];
 
-    if (!Array.isArray(containers)) containers = [containers];
-    if (!Array.isArray(items)) items = [items];
+      if (!Array.isArray(containers)) containers = [containers];
+      if (!Array.isArray(items)) items = [items];
 
-    const allItems = [...containers, ...items].filter(Boolean);
+      const allItems = [...containers, ...items].filter(Boolean);
 
-    const builder = new xml2js.Builder({ headless: true });
+      const builder = new xml2js.Builder({ headless: true });
 
-    const children = await Promise.all(
-      allItems.map(async (child: any) => {
-        const title = child['dc:title'] || 'Unknown Title';
-        const uri = child['res'] || null;
-        const albumArtURI = child['upnp:albumArtURI'] || null;
-        const upnpClass = child['upnp:class'] || '';
-        const isContainer = upnpClass.includes('object.container');
-        const meta = builder.buildObject({ 'DIDL-Lite': { $: rootAttrs, [isContainer ? 'container' : 'item']: child } });
-        const idAttr = child?.$?.id || '';
+      const children = await Promise.all(
+        allItems.map(async (child: any) => {
+          const title = child['dc:title'] || 'Unknown Title';
+          const childRes = child['res'];
+          const uri = typeof childRes === 'object' ? childRes._ : childRes || null;
+          const albumArtURI = child['upnp:albumArtURI'] || null;
+          let upnpClass = child['upnp:class'] || '';
+          const childMeta = child['r:resMD'] || child['resMD'] || '';
+          if (!upnpClass && childMeta) {
+            try {
+              const meta = await metadataParser.parseStringPromise(childMeta);
+              const metaItem = meta['DIDL-Lite']?.item || meta['DIDL-Lite']?.container;
+              upnpClass = metaItem?.['upnp:class'] || '';
+            } catch (err: any) {
+              this.sendError(`Error parsing child metadata: ${err.message}`);
+            }
+          }
 
-        let formattedAlbumArtURI = albumArtURI;
-        if (albumArtURI && !albumArtURI.startsWith('http://') && !albumArtURI.startsWith('https://')) {
-          formattedAlbumArtURI = `http://${this.deviceIP}:${this.port}${albumArtURI}`;
-        }
+          const isContainer = upnpClass.includes('object.container') || (!uri && !!child?.$?.id);
+          const meta = builder.buildObject({ 'DIDL-Lite': { $: rootAttrs, [isContainer ? 'container' : 'item']: child } });
+          const idAttr = child?.$?.id || '';
 
-        const encodedAlbumArtURI = formattedAlbumArtURI ? await this.getImageData(formattedAlbumArtURI) : null;
+          let formattedAlbumArtURI = albumArtURI;
+          if (albumArtURI && !albumArtURI.startsWith('http://') && !albumArtURI.startsWith('https://')) {
+            formattedAlbumArtURI = `http://${this.deviceIP}:${this.port}${albumArtURI}`;
+          }
 
-        return {
-          title,
-          uri,
-          albumArt: encodedAlbumArtURI || null,
-          metaData: meta,
-          isContainer,
-          id: idAttr,
-        };
-      })
-    );
+          const encodedAlbumArtURI = formattedAlbumArtURI ? await this.getImageData(formattedAlbumArtURI) : null;
 
-    return children;
+          return {
+            title,
+            uri,
+            albumArt: encodedAlbumArtURI || null,
+            metaData: meta,
+            isContainer,
+            id: idAttr,
+          };
+        })
+      );
+
+      return children;
+    } catch (error: any) {
+      this.sendError(`Error browsing favorite: ${error.message}`);
+      return [];
+    }
   }
   async getSelectedVolumeSpeakers() {
     try {
@@ -740,7 +758,7 @@ export class SonosHandler {
   }
   
   
-  async playFavoriteOnSpeakers(uri: string, speakerUUIDs: string[]) {
+  async playFavoriteOnSpeakers(uri: any, speakerUUIDs: string[]) {
     if (speakerUUIDs.length === 0) {
       throw new Error('No speakers selected to play the favorite.');
     }
@@ -760,7 +778,8 @@ export class SonosHandler {
     }
 
     this.deviceIP = coordinatorIP;
-    await this.playFavorite(uri);
+    const uriString = typeof uri === 'object' && uri ? uri._ : uri;
+    await this.playFavorite(uriString);
 
     if (this.selectedSpeakerUUIDs && !this.selectedSpeakerUUIDs.includes(coordinatorUUID)) {
       this.selectedSpeakerUUIDs.unshift(coordinatorUUID);
