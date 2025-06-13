@@ -11,3 +11,8 @@ const start = async () => {
 };
 
 DeskThing.on(DESKTHING_EVENTS.START, start);
+
+// Start immediately when this script is executed directly. The START event may
+// not fire if the backend is launched standalone, so this ensures all listeners
+// are registered and ready for GET requests.
+start();
