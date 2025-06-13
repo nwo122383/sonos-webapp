@@ -46,3 +46,9 @@
 .close-button {
   margin-bottom: 10px;
 }
+
+.empty-message {
+  text-align: center;
+  padding: 20px;
+  color: #fff;
+}
