@@ -579,6 +579,9 @@ export class SonosHandler {
           const uri = item['res'] || null;
           const albumArtURI = item['upnp:albumArtURI'] || null;
           const metaData = item['r:resMD'] || item['resMD'] || '';
+          const upnpClass = item['upnp:class'] || '';
+          const isContainer = upnpClass.includes('object.container');
+          const id = item?.$?.id || '';
 
           let formattedAlbumArtURI = albumArtURI;
           if (albumArtURI && !albumArtURI.startsWith('http://') && !albumArtURI.startsWith('https://')) {
@@ -592,6 +595,8 @@ export class SonosHandler {
             uri,
             albumArt: encodedAlbumArtURI || null,
             metaData,
+            isContainer,
+            id,
           };
         })
       );
@@ -602,6 +607,82 @@ export class SonosHandler {
     } catch (error: any) {
       this.sendError(`Error fetching favorites: ${error.response ? error.response.data : error.message}`);
     }
+  }
+
+  async browseFavorite(id: string) {
+    if (!this.deviceIP) {
+      throw new Error('Sonos device IP is not set.');
+    }
+
+    const url = `http://${this.deviceIP}:${this.port}/MediaServer/ContentDirectory/Control`;
+    const soapAction = '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"';
+    const request = `<?xml version="1.0" encoding="utf-8"?>
+      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+        <s:Body>
+          <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
+            <ObjectID>${id}</ObjectID>
+            <BrowseFlag>BrowseDirectChildren</BrowseFlag>
+            <Filter>*</Filter>
+            <StartingIndex>0</StartingIndex>
+            <RequestedCount>100</RequestedCount>
+            <SortCriteria></SortCriteria>
+          </u:Browse>
+        </s:Body>
+      </s:Envelope>`;
+
+    const response = await axios({
+      method: 'POST',
+      url,
+      headers: { 'SOAPAction': soapAction, 'Content-Type': 'text/xml; charset=utf-8' },
+      data: request,
+    });
+
+    const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+    const parsed = await parser.parseStringPromise(response.data);
+    const resultStr = parsed['s:Envelope']['s:Body']['u:BrowseResponse']['Result'];
+
+    const metaParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+    const metaResult = await metaParser.parseStringPromise(resultStr);
+    const rootAttrs = metaResult['DIDL-Lite'].$ || {};
+    let containers: any[] = metaResult['DIDL-Lite']['container'] || [];
+    let items: any[] = metaResult['DIDL-Lite']['item'] || [];
+
+    if (!Array.isArray(containers)) containers = [containers];
+    if (!Array.isArray(items)) items = [items];
+
+    const allItems = [...containers, ...items].filter(Boolean);
+
+    const builder = new xml2js.Builder({ headless: true });
+
+    const children = await Promise.all(
+      allItems.map(async (child: any) => {
+        const title = child['dc:title'] || 'Unknown Title';
+        const uri = child['res'] || null;
+        const albumArtURI = child['upnp:albumArtURI'] || null;
+        const upnpClass = child['upnp:class'] || '';
+        const isContainer = upnpClass.includes('object.container');
+        const meta = builder.buildObject({ 'DIDL-Lite': { $: rootAttrs, [isContainer ? 'container' : 'item']: child } });
+        const idAttr = child?.$?.id || '';
+
+        let formattedAlbumArtURI = albumArtURI;
+        if (albumArtURI && !albumArtURI.startsWith('http://') && !albumArtURI.startsWith('https://')) {
+          formattedAlbumArtURI = `http://${this.deviceIP}:${this.port}${albumArtURI}`;
+        }
+
+        const encodedAlbumArtURI = formattedAlbumArtURI ? await this.getImageData(formattedAlbumArtURI) : null;
+
+        return {
+          title,
+          uri,
+          albumArt: encodedAlbumArtURI || null,
+          metaData: meta,
+          isContainer,
+          id: idAttr,
+        };
+      })
+    );
+
+    return children;
   }
   async getSelectedVolumeSpeakers() {
     try {
