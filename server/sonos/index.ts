@@ -576,8 +576,7 @@ export class SonosHandler {
       const favoritesList = await Promise.all(
         items.map(async (item: any) => {
           const title = item['dc:title'] || 'Unknown Title';
-          const resVal = item['res'];
-          const uri = typeof resVal === 'object' ? resVal._ : resVal || null;
+          const uri = item['res'] || null;
           const albumArtURI = item['upnp:albumArtURI'] || null;
           const metaData = item['r:resMD'] || item['resMD'] || '';
 
@@ -669,8 +668,7 @@ export class SonosHandler {
     const children = await Promise.all(
       allItems.map(async (child: any) => {
         const title = child['dc:title'] || 'Unknown Title';
-        const childRes = child['res'];
-        const uri = typeof childRes === 'object' ? childRes._ : childRes || null;
+        const uri = child['res'] || null;
         const albumArtURI = child['upnp:albumArtURI'] || null;
         const upnpClass = child['upnp:class'] || '';
         const isContainer = upnpClass.includes('object.container') || (!uri && !!child?.$?.id);
@@ -742,7 +740,7 @@ export class SonosHandler {
   }
   
   
-  async playFavoriteOnSpeakers(uri: any, speakerUUIDs: string[]) {
+  async playFavoriteOnSpeakers(uri: string, speakerUUIDs: string[]) {
     if (speakerUUIDs.length === 0) {
       throw new Error('No speakers selected to play the favorite.');
     }
@@ -762,8 +760,7 @@ export class SonosHandler {
     }
 
     this.deviceIP = coordinatorIP;
-    const uriString = typeof uri === 'object' && uri ? uri._ : uri;
-    await this.playFavorite(uriString);
+    await this.playFavorite(uri);
 
     if (this.selectedSpeakerUUIDs && !this.selectedSpeakerUUIDs.includes(coordinatorUUID)) {
       this.selectedSpeakerUUIDs.unshift(coordinatorUUID);
