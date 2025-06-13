@@ -683,15 +683,12 @@ export class SonosHandler {
 
       this.sendLog(`[browseFavorite] Parsed result: ${resultStr.slice(0, 200)}...`);
 
-      const metadataParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+      const metadataParser = new xml2js.Parser({ explicitArray: true, ignoreAttrs: false });
       const metaResult = await metadataParser.parseStringPromise(resultStr);
       this.sendLog(`[browseFavorite] Raw meta result: ${JSON.stringify(metaResult).slice(0, 200)}...`);
       const rootAttrs = metaResult['DIDL-Lite'].$ || {};
-      let containers: any[] = metaResult['DIDL-Lite']['container'] || [];
-      let items: any[] = metaResult['DIDL-Lite']['item'] || [];
-
-    if (!Array.isArray(containers)) containers = [containers];
-    if (!Array.isArray(items)) items = [items];
+      const containers: any[] = metaResult['DIDL-Lite']['container'] || [];
+      const items: any[] = metaResult['DIDL-Lite']['item'] || [];
 
     const allItems = [...containers, ...items].filter(Boolean);
 
