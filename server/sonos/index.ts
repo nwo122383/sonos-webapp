@@ -701,7 +701,8 @@ export class SonosHandler {
         const uri = typeof childRes === 'object' ? childRes._ : childRes || null;
         const albumArtURI = child['upnp:albumArtURI'] || null;
         const upnpClass = child['upnp:class'] || '';
-        const isContainer = upnpClass.includes('object.container') || (!uri && !!child?.$?.id);
+        const isContainer =
+          upnpClass.includes('object.container') || (!uri && Boolean(child?.$?.id));
         const meta = builder.buildObject({ 'DIDL-Lite': { $: rootAttrs, [isContainer ? 'container' : 'item']: child } });
         const idAttr = child?.$?.id || '';
 
