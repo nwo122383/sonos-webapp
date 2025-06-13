@@ -642,22 +642,26 @@ export class SonosHandler {
         </s:Body>
       </s:Envelope>`;
 
-    const response = await axios({
-      method: 'POST',
-      url,
-      headers: { 'SOAPAction': soapAction, 'Content-Type': 'text/xml; charset=utf-8' },
-      data: request,
-    });
+    try {
+      const response = await axios({
+        method: 'POST',
+        url,
+        headers: {
+          SOAPAction: soapAction,
+          'Content-Type': 'text/xml; charset=utf-8',
+        },
+        data: request,
+      });
 
-    const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
-    const parsed = await parser.parseStringPromise(response.data);
-    const resultStr = parsed['s:Envelope']['s:Body']['u:BrowseResponse']['Result'];
+      const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+      const parsed = await parser.parseStringPromise(response.data);
+      const resultStr = parsed['s:Envelope']['s:Body']['u:BrowseResponse']['Result'];
 
-    const metadataParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
-    const metaResult = await metadataParser.parseStringPromise(resultStr);
-    const rootAttrs = metaResult['DIDL-Lite'].$ || {};
-    let containers: any[] = metaResult['DIDL-Lite']['container'] || [];
-    let items: any[] = metaResult['DIDL-Lite']['item'] || [];
+      const metadataParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+      const metaResult = await metadataParser.parseStringPromise(resultStr);
+      const rootAttrs = metaResult['DIDL-Lite'].$ || {};
+      let containers: any[] = metaResult['DIDL-Lite']['container'] || [];
+      let items: any[] = metaResult['DIDL-Lite']['item'] || [];
 
     if (!Array.isArray(containers)) containers = [containers];
     if (!Array.isArray(items)) items = [items];
@@ -695,7 +699,13 @@ export class SonosHandler {
       })
     );
 
-    return children;
+      return children;
+    } catch (error: any) {
+      this.sendError(
+        `Error browsing favorite: ${error.response ? error.response.data : error.message}`,
+      );
+      throw error;
+    }
   }
   async getSelectedVolumeSpeakers() {
     try {
