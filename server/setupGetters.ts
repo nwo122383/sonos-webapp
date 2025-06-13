@@ -20,6 +20,13 @@ export const setupGetters = () => {
       case 'zoneGroupState':
         await sonos.getZoneGroupState();
         break;
+
+      case 'browseFavorite':
+        if (payload?.id) {
+          const children = await sonos.browseFavorite(payload.id);
+          DeskThing.send({ app: 'sonos-webapp', type: 'favoriteChildren', payload: children });
+        }
+        break;
         
         case 'volume':
        if (payload?.speakerUUIDs) {
