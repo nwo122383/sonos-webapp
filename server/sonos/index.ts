@@ -561,7 +561,7 @@ export class SonosHandler {
 
       this.sendLog(`Parsed Favorites XML`);
 
-      const metaParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
+      const metaParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
       const metaResult = await metaParser.parseStringPromise(favoritesResult);
       let items = metaResult['DIDL-Lite'] && metaResult['DIDL-Lite']['item'];
 
@@ -579,8 +579,21 @@ export class SonosHandler {
           const uri = item['res'] || null;
           const albumArtURI = item['upnp:albumArtURI'] || null;
           const metaData = item['r:resMD'] || item['resMD'] || '';
-          const upnpClass = item['upnp:class'] || '';
-          const isContainer = upnpClass.includes('object.container');
+
+          let upnpClass = item['upnp:class'] || '';
+          if (!upnpClass && metaData) {
+            try {
+              const metadataParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+              const meta = await metadataParser.parseStringPromise(metaData);
+              const metaItem = meta['DIDL-Lite']?.item || meta['DIDL-Lite']?.container;
+              upnpClass = metaItem?.['upnp:class'] || '';
+            } catch (err: any) {
+              this.sendError(`Error parsing favorite metadata: ${err.message}`);
+            }
+          }
+
+          const isContainer =
+            upnpClass.includes('object.container') || (!uri && !!item?.$?.id);
           const id = item?.$?.id || '';
 
           let formattedAlbumArtURI = albumArtURI;
@@ -660,7 +673,7 @@ export class SonosHandler {
         const uri = child['res'] || null;
         const albumArtURI = child['upnp:albumArtURI'] || null;
         const upnpClass = child['upnp:class'] || '';
-        const isContainer = upnpClass.includes('object.container');
+        const isContainer = upnpClass.includes('object.container') || (!uri && !!child?.$?.id);
         const meta = builder.buildObject({ 'DIDL-Lite': { $: rootAttrs, [isContainer ? 'container' : 'item']: child } });
         const idAttr = child?.$?.id || '';
 
