@@ -561,7 +561,7 @@ export class SonosHandler {
 
       this.sendLog(`Parsed Favorites XML`);
 
-      const metaParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
+      const metaParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
       const metaResult = await metaParser.parseStringPromise(favoritesResult);
       let items = metaResult['DIDL-Lite'] && metaResult['DIDL-Lite']['item'];
 
@@ -579,7 +579,18 @@ export class SonosHandler {
           const uri = item['res'] || null;
           const albumArtURI = item['upnp:albumArtURI'] || null;
           const metaData = item['r:resMD'] || item['resMD'] || '';
-          const upnpClass = item['upnp:class'] || '';
+
+          let upnpClass = item['upnp:class'] || '';
+          if (!upnpClass && metaData) {
+            try {
+              const meta = await metaParser.parseStringPromise(metaData);
+              const metaItem = meta['DIDL-Lite']?.item || meta['DIDL-Lite']?.container;
+              upnpClass = metaItem?.['upnp:class'] || '';
+            } catch (err: any) {
+              this.sendError(`Error parsing favorite metadata: ${err.message}`);
+            }
+          }
+
           const isContainer = upnpClass.includes('object.container');
           const id = item?.$?.id || '';
 
