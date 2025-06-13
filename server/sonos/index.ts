@@ -626,6 +626,7 @@ export class SonosHandler {
       throw new Error('Sonos device IP is not set.');
     }
 
+    this.sendLog(`[browseFavorite] Browsing favorite ${id}`);
     const url = `http://${this.deviceIP}:${this.port}/MediaServer/ContentDirectory/Control`;
     const soapAction = '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"';
     const request = `<?xml version="1.0" encoding="utf-8"?>
@@ -653,12 +654,16 @@ export class SonosHandler {
         data: request,
       });
 
+      const respText = typeof response.data === 'string' ? response.data : String(response.data);
+      this.sendLog(`[browseFavorite] SOAP response: ${respText.slice(0, 200)}...`);
+
       const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
       const parsed = await parser.parseStringPromise(response.data);
       const resultStr = parsed['s:Envelope']['s:Body']['u:BrowseResponse']['Result'];
 
       const metadataParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
       const metaResult = await metadataParser.parseStringPromise(resultStr);
+      this.sendLog(`[browseFavorite] Raw meta result: ${JSON.stringify(metaResult).slice(0, 200)}...`);
       const rootAttrs = metaResult['DIDL-Lite'].$ || {};
       let containers: any[] = metaResult['DIDL-Lite']['container'] || [];
       let items: any[] = metaResult['DIDL-Lite']['item'] || [];
@@ -699,6 +704,8 @@ export class SonosHandler {
       })
     );
 
+    this.sendLog(`[browseFavorite] Parsed ${children.length} child items`);
+
       return children;
     } catch (error: any) {
       this.sendError(
@@ -712,6 +719,7 @@ export class SonosHandler {
     this.sendLog(`[getFavoriteContainer] Fetching children for ${id}`);
     try {
       const children = await this.browseFavorite(id);
+      this.sendLog(`[getFavoriteContainer] Retrieved ${children.length} children`);
       DeskThing.send({
         app: 'sonos-webapp',
         type: 'favoriteChildren',
