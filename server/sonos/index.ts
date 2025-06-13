@@ -646,9 +646,9 @@ export class SonosHandler {
     try {
       const response = await axios({
         method: 'POST',
-        url,
-        headers: {
-          SOAPAction: soapAction,
+        url: url,
+       headers: {
+          'SOAPAction': soapAction,
           'Content-Type': 'text/xml; charset=utf-8',
         },
         data: request,
@@ -657,9 +657,11 @@ export class SonosHandler {
       const respText = typeof response.data === 'string' ? response.data : String(response.data);
       this.sendLog(`[browseFavorite] SOAP response: ${respText.slice(0, 200)}...`);
 
-      const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+      const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
       const parsed = await parser.parseStringPromise(response.data);
       const resultStr = parsed['s:Envelope']['s:Body']['u:BrowseResponse']['Result'];
+
+      this.sendLog(`[browseFavorite] Parsed result: ${resultStr.slice(0, 200)}...`);
 
       const metadataParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
       const metaResult = await metadataParser.parseStringPromise(resultStr);
