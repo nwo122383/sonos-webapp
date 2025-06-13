@@ -23,51 +23,58 @@ export const setupGetters = () => {
 
       case 'browseFavorite':
         if (payload?.id) {
-          const children = await sonos.browseFavorite(payload.id);
-          DeskThing.send({ app: 'sonos-webapp', type: 'favoriteChildren', payload: children });
+          try {
+            const children = await sonos.browseFavorite(payload.id);
+            DeskThing.send({
+              app: 'sonos-webapp',
+              type: 'favoriteChildren',
+              payload: children,
+            });
+          } catch (err: any) {
+            console.error(`Error browsing favorite: ${err.message}`);
+          }
         }
         break;
-        
-        case 'volume':
-       if (payload?.speakerUUIDs) {
-      try {
-      const volume = await sonos.getCurrentVolume(payload.speakerUUIDs);
-      DeskThing.send({
-        app: 'sonos-webapp',
-        type: 'currentVolume',
-        payload: {
-          volume,
-          uuid: payload.speakerUUIDs[0],
-        },
-      });
-    } catch (err: any) {
-      console.error(`Error fetching volume: ${err.message}`);
-    }
-  } else {
-    console.error('No speaker UUIDs provided for volume request');
-  }
-  break;
 
-  case 'currentVolume': {
-    const uuids = data.payload?.speakerUUIDs || sonos.selectedVolumeSpeakers;
-    if (!uuids || uuids.length === 0) {
-      console.error('No speaker UUIDs provided for volume request');
-      return;
-    }
-  
-    try {
-      const volume = await sonos.getCurrentVolume(uuids);
-      DeskThing.send({
-        app: 'sonos-webapp',
-        type: 'currentVolume',
-        payload: { volume, uuid: uuids[0] },
-      });
-    } catch (error: any) {
-      console.error(`Error fetching volume: ${error.message}`);
-    }
-    break;
-  }
-  
+      case 'volume':
+        if (payload?.speakerUUIDs) {
+          try {
+            const volume = await sonos.getCurrentVolume(payload.speakerUUIDs);
+            DeskThing.send({
+              app: 'sonos-webapp',
+              type: 'currentVolume',
+              payload: {
+                volume,
+                uuid: payload.speakerUUIDs[0],
+              },
+            });
+          } catch (err: any) {
+            console.error(`Error fetching volume: ${err.message}`);
+          }
+        } else {
+          console.error('No speaker UUIDs provided for volume request');
+        }
+        break;
+
+      case 'currentVolume': {
+        const uuids = payload?.speakerUUIDs || sonos.selectedVolumeSpeakers;
+        if (!uuids || uuids.length === 0) {
+          console.error('No speaker UUIDs provided for volume request');
+          break;
+        }
+
+        try {
+          const volume = await sonos.getCurrentVolume(uuids);
+          DeskThing.send({
+            app: 'sonos-webapp',
+            type: 'currentVolume',
+            payload: { volume, uuid: uuids[0] },
+          });
+        } catch (error: any) {
+          console.error(`Error fetching volume: ${error.message}`);
+        }
+        break;
+      }
 
       case 'selectedVolumeSpeakers':
         DeskThing.send({
