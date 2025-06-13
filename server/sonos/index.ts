@@ -659,7 +659,27 @@ export class SonosHandler {
 
       const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
       const parsed = await parser.parseStringPromise(response.data);
-      const resultStr = parsed['s:Envelope']['s:Body']['u:BrowseResponse']['Result'];
+
+      const envelope = parsed?.['s:Envelope'];
+      if (!envelope) {
+        this.sendError('[browseFavorite] SOAP response missing s:Envelope');
+        return [];
+      }
+      const body = envelope?.['s:Body'];
+      if (!body) {
+        this.sendError('[browseFavorite] SOAP response missing s:Body');
+        return [];
+      }
+      const browseResp = body?.['u:BrowseResponse'];
+      if (!browseResp) {
+        this.sendError('[browseFavorite] SOAP response missing u:BrowseResponse');
+        return [];
+      }
+      const resultStr = browseResp?.['Result'];
+      if (!resultStr) {
+        this.sendError('[browseFavorite] SOAP response missing u:BrowseResponse.Result');
+        return [];
+      }
 
       this.sendLog(`[browseFavorite] Parsed result: ${resultStr.slice(0, 200)}...`);
 
