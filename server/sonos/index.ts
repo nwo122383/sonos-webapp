@@ -561,8 +561,8 @@ export class SonosHandler {
 
       this.sendLog(`Parsed Favorites XML`);
 
-      const metaParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
-      const metaResult = await metaParser.parseStringPromise(favoritesResult);
+      const metadataParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+      const metaResult = await metadataParser.parseStringPromise(favoritesResult);
       let items = metaResult['DIDL-Lite'] && metaResult['DIDL-Lite']['item'];
 
       if (!items) {
@@ -583,7 +583,7 @@ export class SonosHandler {
           let upnpClass = item['upnp:class'] || '';
           if (!upnpClass && metaData) {
             try {
-              const meta = await metaParser.parseStringPromise(metaData);
+              const meta = await metadataParser.parseStringPromise(metaData);
               const metaItem = meta['DIDL-Lite']?.item || meta['DIDL-Lite']?.container;
               upnpClass = metaItem?.['upnp:class'] || '';
             } catch (err: any) {
@@ -591,7 +591,7 @@ export class SonosHandler {
             }
           }
 
-          const isContainer = upnpClass.includes('object.container');
+          const isContainer = upnpClass.includes('object.container') || (!uri && !!item?.$?.id);
           const id = item?.$?.id || '';
 
           let formattedAlbumArtURI = albumArtURI;
@@ -652,8 +652,8 @@ export class SonosHandler {
     const parsed = await parser.parseStringPromise(response.data);
     const resultStr = parsed['s:Envelope']['s:Body']['u:BrowseResponse']['Result'];
 
-    const metaParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
-    const metaResult = await metaParser.parseStringPromise(resultStr);
+    const metadataParser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+    const metaResult = await metadataParser.parseStringPromise(resultStr);
     const rootAttrs = metaResult['DIDL-Lite'].$ || {};
     let containers: any[] = metaResult['DIDL-Lite']['container'] || [];
     let items: any[] = metaResult['DIDL-Lite']['item'] || [];
@@ -671,7 +671,7 @@ export class SonosHandler {
         const uri = child['res'] || null;
         const albumArtURI = child['upnp:albumArtURI'] || null;
         const upnpClass = child['upnp:class'] || '';
-        const isContainer = upnpClass.includes('object.container');
+        const isContainer = upnpClass.includes('object.container') || (!uri && !!child?.$?.id);
         const meta = builder.buildObject({ 'DIDL-Lite': { $: rootAttrs, [isContainer ? 'container' : 'item']: child } });
         const idAttr = child?.$?.id || '';
 
