@@ -24,12 +24,7 @@ export const setupGetters = () => {
       case 'browseFavorite':
         if (payload?.id) {
           try {
-            const children = await sonos.browseFavorite(payload.id);
-            DeskThing.send({
-              app: 'sonos-webapp',
-              type: 'favoriteChildren',
-              payload: children,
-            });
+            await sonos.getFavoriteContainer(payload.id);
           } catch (err: any) {
             console.error(`Error browsing favorite: ${err.message}`);
           }

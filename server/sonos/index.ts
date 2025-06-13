@@ -707,6 +707,21 @@ export class SonosHandler {
       throw error;
     }
   }
+
+  async getFavoriteContainer(id: string) {
+    this.sendLog(`[getFavoriteContainer] Fetching children for ${id}`);
+    try {
+      const children = await this.browseFavorite(id);
+      DeskThing.send({
+        app: 'sonos-webapp',
+        type: 'favoriteChildren',
+        payload: children,
+      });
+    } catch (err: any) {
+      this.sendError(`[getFavoriteContainer] ${err.message}`);
+      throw err;
+    }
+  }
   async getSelectedVolumeSpeakers() {
     try {
       const selected = this.volumeSpeakers;
