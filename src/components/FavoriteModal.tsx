@@ -16,20 +16,24 @@ const FavoriteModal: React.FC<Props> = ({ items, onClose, onPlay, onBrowse }) =>
         <button className="close-button" onClick={onClose}>
           Close
         </button>
-        <div className="modal-grid">
-          {items.map((fav) => (
-            <div key={fav.id} className="modal-item">
-              <img src={fav.albumArt || ''} alt={fav.title} />
-              <div className="modal-title">{fav.title}</div>
-              <div className="modal-actions">
-                <button onClick={() => onPlay(fav)}>Play</button>
-                {fav.isContainer && (
-                  <button onClick={() => onBrowse(fav)}>Browse</button>
-                )}
+        {items.length === 0 ? (
+          <div className="empty-message">No items found.</div>
+        ) : (
+          <div className="modal-grid">
+            {items.map((fav) => (
+              <div key={fav.id} className="modal-item">
+                <img src={fav.albumArt || ''} alt={fav.title} />
+                <div className="modal-title">{fav.title}</div>
+                <div className="modal-actions">
+                  <button onClick={() => onPlay(fav)}>Play</button>
+                  {fav.isContainer && (
+                    <button onClick={() => onBrowse(fav)}>Browse</button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

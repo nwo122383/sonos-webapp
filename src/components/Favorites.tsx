@@ -89,6 +89,7 @@ const Favorites = () => {
 
     const handleFavoriteChildren = (socketData: SocketData) => {
       if (socketData.type === 'favoriteChildren') {
+        console.log('Received favoriteChildren:', socketData.payload);
         setModalItems(socketData.payload);
         setShowModal(true);
       }
