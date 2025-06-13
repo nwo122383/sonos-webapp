@@ -680,9 +680,7 @@ export class SonosHandler {
         this.sendError('[browseFavorite] SOAP response missing u:BrowseResponse.Result');
         return [];
       }
-
       this.sendLog(`[browseFavorite] Parsed result: ${resultStr.slice(0, 200)}...`);
-
       const metadataParser = new xml2js.Parser({ explicitArray: true, ignoreAttrs: false });
       const metaResult = await metadataParser.parseStringPromise(resultStr);
       this.sendLog(`[browseFavorite] Raw meta result: ${JSON.stringify(metaResult).slice(0, 200)}...`);
