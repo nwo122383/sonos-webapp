@@ -52,35 +52,55 @@ export class SonosHandler {
     this.sendSoapRequest = this.sendSoapRequest.bind(this);
   }
   private async sendSoapRequest({ action, service, body, ip }: {
-    action: string;
-    service: string;
-    body: string;
-    ip: string;
-  }): Promise<string> {
-    const url = `http://${ip}:1400/MediaRenderer/${service}/Control`;
-    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
-      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" 
-                  s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-        <s:Body>${body}</s:Body>
-      </s:Envelope>`;
-  
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset="utf-8"',
-        'SOAPAction': `"${action}"`,
-      },
-      body: soapEnvelope,
-    });
-  
-    if (!res.ok) {
-      throw new Error(`SOAP Request Failed: ${res.status} ${res.statusText}`);
-    }
-  
-    const text = await res.text();
-    this.sendLog(`[SOAP Response] ${text.slice(0, 200)}...`);
-    return text;
+  action: string;
+  service: string;
+  body: string;
+  ip: string;
+}): Promise<string> {
+  // Determine the correct endpoint based on the service
+  let url: string;
+  if (service === 'urn:schemas-upnp-org:service:ContentDirectory:1') {
+    // ContentDirectory requires the MediaServer path
+    url = `http://${ip}:1400/MediaServer/ContentDirectory/Control`;
+  } else if (service === 'urn:schemas-upnp-org:service:AVTransport:1') {
+    url = `http://${ip}:1400/MediaRenderer/AVTransport/Control`;
+  } else if (service === 'urn:schemas-upnp-org:service:RenderingControl:1') {
+    url = `http://${ip}:1400/MediaRenderer/RenderingControl/Control`;
+  } else {
+    throw new Error(`Unknown SOAP service: ${service}`);
   }
+
+  const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+      <s:Body>${body}</s:Body>
+    </s:Envelope>`;
+
+  console.log('[Sonos] Sending SOAP request to:', url);
+  console.log('[Sonos] SOAPAction:', action);
+  console.log('[Sonos] SOAP Body:\n', soapEnvelope);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/xml; charset="utf-8"',
+      'SOAPAction': `"${action}"`,
+    },
+    body: soapEnvelope,
+  });
+
+  const text = await res.text();
+
+  if (!res.ok) {
+    console.error(`[SOAP ERROR ${res.status}] ${text}`);
+    throw new Error(`SOAP Request Failed: ${res.status} ${res.statusText}`);
+  }
+
+  this.sendLog(`[SOAP Response] ${text.slice(0, 200)}...`);
+  return text;
+}
+
+
   
   async getSpeakerIPByUUID(uuid: string): Promise<string | null> {
     if (this.speakersList[uuid]) return this.speakersList[uuid].ip;
@@ -633,71 +653,94 @@ export class SonosHandler {
     }
   }
 
-  async browseFavorite(objectId: string, speakerIP: string): Promise<any[]> {
-    const soapBody = `
-      <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
-        <ObjectID>${objectId}</ObjectID>
-        <BrowseFlag>BrowseDirectChildren</BrowseFlag>
-        <Filter>*</Filter>
-        <StartingIndex>0</StartingIndex>
-        <RequestedCount>100</RequestedCount>
-        <SortCriteria></SortCriteria>
-      </u:Browse>
-  `   ;
+ async browseFavorite(objectId: string, speakerIP: string) {
+  console.log('[Sonos] Browsing favorite container:', objectId, 'on', speakerIP);
 
-  const envelope = `
-    <?xml version="1.0" encoding="utf-8"?>
-    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" 
-                s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-      <s:Body>${soapBody}</s:Body>
-    </s:Envelope>
-  `;
-
-  const url = `http://${speakerIP}:1400/MediaServer/ContentDirectory/Control`;
-
-  const headers = {
-    'Content-Type': 'text/xml; charset="utf-8"',
-    SOAPACTION: '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"',
-  };
+  const soapBody = `
+    <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
+      <ObjectID>${objectId}</ObjectID>
+      <BrowseFlag>BrowseDirectChildren</BrowseFlag>
+      <Filter>*</Filter>
+      <StartingIndex>0</StartingIndex>
+      <RequestedCount>100</RequestedCount>
+      <SortCriteria></SortCriteria>
+    </u:Browse>`;
 
   try {
-    const { data } = await axios.post(url, envelope, { headers });
-    const result = await xml2js.parseStringPromise(data, { explicitArray: false });
+    console.log('[Sonos] Preparing to send Browse SOAP request to speakerIP:', speakerIP);
+    console.log('[Sonos] SOAP body:\n', soapBody);
 
-    const rawResult = result['s:Envelope']?.['s:Body']?.['u:BrowseResponse']?.Result;
-
-    const parsed = await xml2js.parseStringPromise(rawResult, {
-      explicitArray: false,
-      ignoreAttrs: false,
+    const response = await this.sendSoapRequest({
+      ip: speakerIP,
+      path: '/MediaServer/ContentDirectory/Control',
+      service: 'urn:schemas-upnp-org:service:ContentDirectory:1',
+      action: 'Browse',
+      body: soapBody,
     });
 
-    const items = parsed['DIDL-Lite']?.item;
-    if (!items) return [];
+    console.log('[Sonos] Raw SOAP response:\n', response);
 
-    // Always return an array
-    return Array.isArray(items) ? items : [items];
-  } catch (error) {
-    console.error('Error in browseFavorite:', error);
+    const result = await parseStringPromise(response);
+    const rawResult = result['s:Envelope']['s:Body'][0]['u:BrowseResponse'][0]['Result'][0];
+
+    console.log('[Sonos] Raw DIDL Result (before parsing again):\n', rawResult);
+
+    const parsed = await parseStringPromise(rawResult, { explicitArray: false });
+    console.log('[Sonos] Parsed DIDL object:', parsed);
+
+    const rawItems = parsed['DIDL-Lite']?.item;
+    console.log('[Sonos] Raw DIDL-Lite item:', rawItems);
+
+    const items = rawItems
+      ? Array.isArray(rawItems)
+        ? rawItems
+        : [rawItems]
+      : [];
+
+    console.log('[Sonos] Final items array:', items);
+
+    const browseResults = items.map((item) => {
+      const meta = new xml2js.Builder().buildObject({ 'DIDL-Lite': item });
+
+      return {
+        uri: item.res?._ || item.res || null,
+        title: item['dc:title'] || 'Unknown',
+        albumArt: item['upnp:albumArtURI'] || null,
+        metaData: meta,
+        isContainer: item['upnp:class']?.includes('container') || false,
+        id: item.$?.id || '',
+        browseId: item.$?.id || '',
+      };
+    });
+
+    console.log('[Sonos] Parsed browse results:', browseResults);
+
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'browseFavoriteResults',
+      payload: browseResults,
+    });
+
+    return browseResults;
+  } catch (err) {
+    console.error('[Sonos] Error in browseFavorite:', err);
+
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'browseFavoriteResults',
+      payload: [],
+    });
+
     return [];
   }
 }
 
 
-  async getFavoriteContainer(id: string) {
-    this.sendLog(`[getFavoriteContainer] Fetching children for ${id}`);
-    try {
-      const children = await this.browseFavorite(id);
-      this.sendLog(`[getFavoriteContainer] Retrieved ${children.length} children`);
-      DeskThing.send({
-        app: 'sonos-webapp',
-        type: 'favoriteChildren',
-        payload: children,
-      });
-    } catch (err: any) {
-      this.sendError(`[getFavoriteContainer] ${err.message}`);
-      throw err;
-    }
-  }
+
+
+
+
+
   async getSelectedVolumeSpeakers() {
     try {
       const selected = this.volumeSpeakers;

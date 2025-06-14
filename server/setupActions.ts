@@ -7,11 +7,8 @@ import { SocketData } from '@deskthing/types';
 export const setupActions = () => {
   console.log('[Sonos] Registering DeskThing listeners.');
 
-  
   DeskThing.on('set', async (socketData: SocketData) => {
     console.log(`[Sonos] Received SET: ${JSON.stringify(socketData)}`);
-    
-
     const { request, payload } = socketData;
 
     switch (request) {
@@ -25,18 +22,19 @@ export const setupActions = () => {
           });
         }
         break;
-        case 'volumeChange':
-  if (typeof payload?.volume === 'number' && Array.isArray(payload?.speakerUUIDs)) {
-    for (const uuid of payload.speakerUUIDs) {
-      const speakerIP = await sonos.getSpeakerIPByUUID(uuid);
-      if (speakerIP) {
-        await sonos.setVolume({ volume: payload.volume, uuid });
-      }
-    }
-  } else {
-    console.error('Invalid volumeChange payload');
-  }
-  break;
+
+      case 'volumeChange':
+        if (typeof payload?.volume === 'number' && Array.isArray(payload?.speakerUUIDs)) {
+          for (const uuid of payload.speakerUUIDs) {
+            const speakerIP = await sonos.getSpeakerIPByUUID(uuid);
+            if (speakerIP) {
+              await sonos.setVolume({ volume: payload.volume, uuid });
+            }
+          }
+        } else {
+          console.error('Invalid volumeChange payload');
+        }
+        break;
 
       case 'selectPlaybackSpeakers':
         if (payload?.uuids) {
@@ -61,22 +59,20 @@ export const setupActions = () => {
         }
         break;
 
-        case 'playFavorite':
-          if (payload?.uri) {
-            const uuids =
-              payload.speakerUUIDs ||
-              sonos.selectedPlaybackSpeakers ||
-              sonos.selectedSpeakerUUIDs ||
-              [];
-        
-            if (uuids.length > 0) {
-              await sonos.playFavoriteOnSpeakers(payload.uri, uuids);
-            } else {
-              console.warn('[playFavorite] No speakers selected.');
-            }
+      case 'playFavorite':
+        if (payload?.uri) {
+          const uuids =
+            payload.speakerUUIDs ||
+            sonos.selectedPlaybackSpeakers ||
+            sonos.selectedSpeakerUUIDs || [];
+
+          if (uuids.length > 0) {
+            await sonos.playFavoriteOnSpeakers(payload.uri, uuids);
+          } else {
+            console.warn('[playFavorite] No speakers selected.');
           }
-          break;
-        
+        }
+        break;
 
       case 'setVolume':
         if (payload?.uuid && typeof payload.level === 'number') {
@@ -90,18 +86,18 @@ export const setupActions = () => {
         }
         break;
 
-     case 'browseFavorite':
-         if (payload?.objectId && payload?.speakerIP) {
-        const results = await sonos.browseFavorite(payload.objectId, payload.speakerIP);
-        console.log('[Sonos] Sending browseFavoriteResults:', results);
-
-        DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'browseFavoriteResults',
-          payload: results,
-        });
+      case 'browseFavorite':
+        if (payload?.objectId && payload?.speakerIP) {
+          const results = await sonos.browseFavorite(payload.objectId, payload.speakerIP);
+          // DeskThing.send now handled directly inside sonos.browseFavorite()
+          console.log('[setupActions] browseFavorite returned results:', results.length);
         } else {
-        console.warn('[browseFavorite] Missing objectId or speakerIP in payload.');
+          console.warn('[browseFavorite] Missing objectId or speakerIP in payload.');
+          DeskThing.send({
+            app: 'sonos-webapp',
+            type: 'browseFavoriteResults',
+            payload: [],
+          });
         }
         break;
 

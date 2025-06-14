@@ -23,6 +23,19 @@ interface Speaker {
   groupId: string;
 }
 
+function extractItemIdFromMetaData(metaData: string): string | null {
+  const match = metaData.match(/<item id="([^"]+)"/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function extractIPAddress(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
 const Favorites = () => {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
@@ -34,137 +47,114 @@ const Favorites = () => {
     DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'favorites' });
     DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'zoneGroupState' });
 
-    const handleFavorite = (socketData: SocketData) => {
-      if (socketData.type === 'favorites') {
-        setFavorites(socketData.payload);
-      }
+    const handleFavorite = (data: SocketData) => {
+      if (data.type === 'favorites') setFavorites(data.payload);
     };
 
-    const handleZoneGroupState = (socketData: SocketData) => {
-      if (socketData.type === 'zoneGroupState') {
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(socketData.payload, 'text/xml');
-        const groupElements = Array.from(xmlDoc.getElementsByTagName('ZoneGroup'));
+    const handleZoneGroupState = (data: SocketData) => {
+      if (data.type !== 'zoneGroupState') return;
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(data.payload, 'text/xml');
+      const groups = Array.from(xml.getElementsByTagName('ZoneGroup'));
+      const all: Speaker[] = [];
 
-        const allSpeakers: Speaker[] = [];
-
-        groupElements.forEach((groupElement) => {
-          const coordinatorUUID = groupElement.getAttribute('Coordinator');
-          const groupId = groupElement.getAttribute('ID') || '';
-          const members = Array.from(groupElement.getElementsByTagName('ZoneGroupMember'));
-
-          members.forEach((member) => {
-            const uuid = member.getAttribute('UUID');
-            const location = member.getAttribute('Location');
-            const zoneName = member.getAttribute('ZoneName');
-            const isCoordinator = uuid === coordinatorUUID;
-
-            allSpeakers.push({
-              uuid: uuid || '',
-              location: location || '',
-              zoneName: zoneName || '',
-              isCoordinator,
-              groupId,
-            });
+      groups.forEach((group) => {
+        const coordinator = group.getAttribute('Coordinator');
+        const groupId = group.getAttribute('ID') || '';
+        const members = Array.from(group.getElementsByTagName('ZoneGroupMember'));
+        members.forEach((m) => {
+          all.push({
+            uuid: m.getAttribute('UUID') || '',
+            location: m.getAttribute('Location') || '',
+            zoneName: m.getAttribute('ZoneName') || '',
+            isCoordinator: m.getAttribute('UUID') === coordinator,
+            groupId,
           });
         });
+      });
 
-        setSpeakers(allSpeakers);
+      setSpeakers(all);
+    };
+
+    const handleSelectedSpeakers = (data: SocketData) => {
+      if (data.type === 'selectedSpeakers' && data.payload.uuids) {
+        setSelectedSpeakerUUIDs(data.payload.uuids);
       }
     };
 
-    const handleSelectedSpeaker = (socketData: SocketData) => {
-      if (socketData.type === 'selectedSpeakers' && socketData.payload.uuids) {
-        setSelectedSpeakerUUIDs(socketData.payload.uuids);
-      }
-    };
+    const handleBrowseResults = (() => {
+      let lastAlertTime = 0;
 
-    const handleFavoriteChildren = (socketData: SocketData) => {
-      console.log('[Favorites] Received browseFavoriteResults:', socketData.payload);
+      return (data: SocketData) => {
+        if (data.type !== 'browseFavoriteResults') return;
 
-      if (socketData.type === 'browseFavoriteResults') {
-        console.log('Received browseFavoriteResults:', socketData.payload);
-        setModalItems(socketData.payload);
-        setShowModal(true);
-        console.log('[Favorites] Showing modal with items:', socketData.payload);
+        console.log('[Favorites] Received browseFavoriteResults:', data.payload);
 
-      }
-    };
+        if (Array.isArray(data.payload) && data.payload.length > 0) {
+          setModalItems(data.payload);
+          setShowModal(true);
+        } else {
+          const now = Date.now();
+          if (now - lastAlertTime > 3000) {
+            alert('No items found in this favorite. It may not be playable.');
+            lastAlertTime = now;
+          }
+        }
+      };
+    })();
 
-    const removeFavoritesListener = DeskThing.on('favorites', handleFavorite);
-    const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState);
-    const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker);
-    const removeFavChildrenListener = DeskThing.on('browseFavoriteResults', handleFavoriteChildren);
-
+    const off1 = DeskThing.on('favorites', handleFavorite);
+    const off2 = DeskThing.on('zoneGroupState', handleZoneGroupState);
+    const off3 = DeskThing.on('selectedSpeakers', handleSelectedSpeakers);
+    const off4 = DeskThing.on('browseFavoriteResults', handleBrowseResults);
     return () => {
-      removeFavoritesListener();
-      removeZoneGroupStateListener();
-      removeSelectedSpeakersListener();
-      removeFavChildrenListener();
+      off1();
+      off2();
+      off3();
+      off4();
     };
   }, []);
 
-  const extractIPAddress = (url: string) => {
-    try {
-      const parsedURL = new URL(url);
-      return parsedURL.hostname;
-    } catch (error) {
-      console.error('Error parsing URL:', error);
-      return null;
-    }
-  };
-
   const selectSpeaker = (uuid: string) => {
-    setSelectedSpeakerUUIDs((prevSelected) => {
-      let newSelected;
-      if (prevSelected.includes(uuid)) {
-        newSelected = prevSelected.filter((id) => id !== uuid);
-      } else {
-        newSelected = [...prevSelected, uuid];
-      }
+    setSelectedSpeakerUUIDs((prev) => {
+      const updated = prev.includes(uuid)
+        ? prev.filter((id) => id !== uuid)
+        : [...prev, uuid];
 
       DeskThing.send({
         app: 'sonos-webapp',
         type: 'set',
         request: 'selectSpeakers',
-        payload: { uuids: newSelected },
+        payload: { uuids: updated },
       });
 
-      return newSelected;
+      return updated;
     });
   };
 
   const handleFavoriteClick = (favorite: Favorite) => {
-    if (favorite.isContainer) {
-      if (selectedSpeakerUUIDs.length === 0) {
-        alert('Please select at least one speaker to browse this favorite.');
-        return;
-      }
+    if (selectedSpeakerUUIDs.length === 0) {
+      alert('Please select at least one speaker.');
+      return;
+    }
 
-      const firstUUID = selectedSpeakerUUIDs[0];
-      const selectedSpeaker = speakers.find((s) => s.uuid === firstUUID);
-      const speakerIP = extractIPAddress(selectedSpeaker?.location || '');
+    const speaker = speakers.find((s) => selectedSpeakerUUIDs.includes(s.uuid));
+    const speakerIP = extractIPAddress(speaker?.location || '');
+    const objectId = extractItemIdFromMetaData(favorite.metaData) || favorite.browseId || favorite.id;
 
-      if (!speakerIP) {
-        console.warn('Could not determine speaker IP');
-        return;
-      }
+    if (!speakerIP) {
+      console.warn('No valid speaker IP found');
+      return;
+    }
 
+    if (!favorite.uri) {
       DeskThing.send({
         app: 'sonos-webapp',
         type: 'set',
         request: 'browseFavorite',
-        payload: {
-          objectId: favorite.browseId || favorite.id,
-          speakerIP,
-        },
+        payload: { objectId, speakerIP },
       });
     } else {
-      if (selectedSpeakerUUIDs.length === 0) {
-        alert('Please select at least one speaker to play the favorite.');
-        return;
-      }
-
       DeskThing.send({
         app: 'sonos-webapp',
         type: 'set',
@@ -181,49 +171,37 @@ const Favorites = () => {
   return (
     <div id="favorites-container">
       <h2>Select speaker to play favorites on</h2>
-
       <button
-        onClick={() => {
-          if (selectedSpeakerUUIDs.length === speakers.length) {
-            setSelectedSpeakerUUIDs([]);
-            DeskThing.send({
-              app: 'sonos-webapp',
-              type: 'set',
-              request: 'selectPlaybackSpeakers',
-              payload: { uuids: [] },
-            });
-          } else {
-            const allUUIDs = speakers.map((speaker) => speaker.uuid);
-            setSelectedSpeakerUUIDs(allUUIDs);
-            DeskThing.send({
-              app: 'sonos-webapp',
-              type: 'set',
-              request: 'selectSpeakers',
-              payload: { uuids: allUUIDs },
-            });
-          }
-        }}
         className="select-all-button"
+        onClick={() => {
+          const all = speakers.map((s) => s.uuid);
+          const next = selectedSpeakerUUIDs.length === all.length ? [] : all;
+          setSelectedSpeakerUUIDs(next);
+          DeskThing.send({
+            app: 'sonos-webapp',
+            type: 'set',
+            request: 'selectSpeakers',
+            payload: { uuids: next },
+          });
+        }}
       >
         {selectedSpeakerUUIDs.length === speakers.length ? 'Deselect All Speakers' : 'Select All Speakers'}
       </button>
 
       <div className="speakers-list">
-        {speakers.map((speaker, idx) => {
-          const speakerIP = extractIPAddress(speaker.location);
-          const isSelected = selectedSpeakerUUIDs.includes(speaker.uuid);
-
+        {speakers.map((speaker, i) => {
+          const selected = selectedSpeakerUUIDs.includes(speaker.uuid);
           return (
-            <div key={idx} className={`speaker-item ${isSelected ? 'selected' : ''}`}>
+            <div key={i} className={`speaker-item ${selected ? 'selected' : ''}`}>
               <div className="speaker-info">
-                <strong>{speaker.zoneName}</strong> - {speakerIP}
+                <strong>{speaker.zoneName}</strong> - {extractIPAddress(speaker.location)}
               </div>
               <div className="speaker-controls">
                 <button
                   onClick={() => selectSpeaker(speaker.uuid)}
-                  className={`select-speaker-button ${isSelected ? 'selected' : ''}`}
+                  className={`select-speaker-button ${selected ? 'selected' : ''}`}
                 >
-                  {isSelected ? `Selected: ${speaker.zoneName}` : `Select Speaker: ${speaker.zoneName}`}
+                  {selected ? `Selected: ${speaker.zoneName}` : `Select Speaker: ${speaker.zoneName}`}
                 </button>
               </div>
             </div>
@@ -233,14 +211,10 @@ const Favorites = () => {
 
       <h2>Favorites</h2>
       <div className="favorites-grid">
-        {favorites.map((favorite) => (
-          <div
-            key={favorite.id}
-            className="favorite-item"
-            onClick={() => handleFavoriteClick(favorite)}
-          >
-            <img src={favorite.albumArt || 'default-image.jpg'} alt="Album Art" />
-            <div>{favorite.title}</div>
+        {favorites.map((f) => (
+          <div key={f.id} className="favorite-item" onClick={() => handleFavoriteClick(f)}>
+            <img src={f.albumArt || 'default-image.jpg'} alt="Album Art" />
+            <div>{f.title}</div>
           </div>
         ))}
       </div>
@@ -250,21 +224,53 @@ const Favorites = () => {
           items={modalItems}
           onClose={() => setShowModal(false)}
           onPlay={(fav) => handleFavoriteClick(fav)}
-          onBrowse={(fav) =>
+          onBrowse={(fav) => {
+            const speaker = speakers.find((s) => selectedSpeakerUUIDs.includes(s.uuid));
+            const speakerIP = extractIPAddress(speaker?.location || '');
+            const objectId = extractItemIdFromMetaData(fav.metaData) || fav.browseId || fav.id;
+
+            if (!speakerIP) {
+              console.warn('No speaker IP found for browsing container');
+              return;
+            }
+
             DeskThing.send({
               app: 'sonos-webapp',
               type: 'set',
               request: 'browseFavorite',
-              payload: {
-                objectId: fav.browseId || fav.id,
-                speakerIP: extractIPAddress(
-                  speakers.find((s) => selectedSpeakerUUIDs.includes(s.uuid))?.location || ''
-                ),
-              },
-            })
-          }
+              payload: { objectId, speakerIP },
+            });
+          }}
         />
       )}
+
+      <div className="debug-buttons" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '30px' }}>
+        {favorites.map((fav, i) => {
+          const id = extractItemIdFromMetaData(fav.metaData) || fav.browseId || fav.id;
+          const speakerIP = extractIPAddress(speakers.find((s) => selectedSpeakerUUIDs.includes(s.uuid))?.location || '');
+          return (
+            <div key={i} style={{ flex: '1 1 300px' }}>
+              <div style={{ fontSize: '0.8em', marginBottom: '4px' }}>{fav.title}</div>
+              {['', 'S:', 'A:', 'A:10fe2064show:', 'FV:2/'].map((prefix, j) => (
+                <button
+                  key={j}
+                  style={{ padding: '8px', width: '100%', background: '#222', color: '#fff' }}
+                  onClick={() =>
+                    DeskThing.send({
+                      app: 'sonos-webapp',
+                      type: 'set',
+                      request: 'browseFavorite',
+                      payload: { objectId: prefix + id, speakerIP },
+                    })
+                  }
+                >
+                  Format {j + 1} ({prefix || 'raw'})
+                </button>
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

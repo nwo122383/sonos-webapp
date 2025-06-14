@@ -1,39 +1,99 @@
-import React from 'react';
-import { Favorite } from './Favorites';
+import React, { useEffect, useState } from 'react';
+import { DeskThing, SocketData } from '@deskthing/client';
 import './FavoriteModal.css';
 
-interface Props {
-  items: Favorite[];
-  onClose: () => void;
-  onPlay: (fav: Favorite) => void;
-  onBrowse: (fav: Favorite) => void;
-}
+type BrowseItem = {
+  title: string;
+  albumArt: string | null;
+  uri: string;
+  metaData: string;
+  isContainer: boolean;
+  id: string;
+  browseId: string;
+};
 
-const FavoriteModal: React.FC<Props> = ({ items, onClose, onPlay, onBrowse }) => {
+type FavoriteModalProps = {
+  favoriteId: string;
+  speakerIP: string;
+  onClose: () => void;
+};
+
+const FavoriteModal: React.FC<FavoriteModalProps> = ({ favoriteId, speakerIP, onClose }) => {
+  const [browseItems, setBrowseItems] = useState<BrowseItem[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleResults = (items: BrowseItem[]) => {
+      console.log('[FavoriteModal] Received browseFavoriteResults:', items);
+      if (!items || items.length === 0) {
+        setError('No items found in this favorite. It may not be playable.');
+      } else {
+        setBrowseItems(items);
+        setError(null);
+      }
+    };
+
+    DeskThing.on('browseFavoriteResults', handleResults);
+
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'set',
+      request: 'browseFavorite',
+      payload: {
+        objectId: favoriteId,
+        speakerIP,
+      },
+    });
+
+    return () => {
+      DeskThing.off('browseFavoriteResults', handleResults);
+    };
+  }, [favoriteId, speakerIP]);
+
+  const handleItemClick = (item: BrowseItem) => {
+    console.log('[FavoriteModal] Playing browsed item:', item);
+
+    if (!item.uri || !item.metaData) {
+      alert('This item does not have a valid URI or metadata.');
+      return;
+    }
+
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'set',
+      request: 'playFavorite',
+      payload: {
+        uri: item.uri,
+        metaData: item.metaData,
+        speakerIP,
+      },
+    });
+
+    onClose();
+  };
+
   return (
-    <div className="modal-overlay">
-      <div className="favorite-modal">
-        <button className="close-button" onClick={onClose}>
-          Close
-        </button>
-        {items.length === 0 ? (
-          <div className="empty-message">No items found.</div>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <h2>Select an Item</h2>
+        {error ? (
+          <div className="modal-error">
+            <p>{error}</p>
+            <button onClick={onClose}>OK</button>
+          </div>
         ) : (
-          <div className="modal-grid">
-            {items.map((fav) => (
-              <div key={fav.id} className="modal-item">
-                <img src={fav.albumArt || ''} alt={fav.title} />
-                <div className="modal-title">{fav.title}</div>
-                <div className="modal-actions">
-                  <button onClick={() => onPlay(fav)}>Play</button>
-                  {fav.isContainer && (
-                    <button onClick={() => onBrowse(fav)}>Browse</button>
-                  )}
-                </div>
+          <div className="modal-items-grid">
+            {browseItems.map((item) => (
+              <div key={item.id} className="modal-item" onClick={() => handleItemClick(item)}>
+                <img src={item.albumArt || 'default-image.jpg'} alt={item.title} />
+                <div className="modal-title">{item.title}</div>
               </div>
             ))}
           </div>
         )}
+        <button onClick={onClose} className="modal-close-button">
+          ✖ Close
+        </button>
       </div>
     </div>
   );
