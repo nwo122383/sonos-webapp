@@ -19,10 +19,10 @@ async function parseDIDL(xml: string, deviceIP: string = '192.0.2.1', port = 140
       const albumArtVal = Array.isArray(child['upnp:albumArtURI']) ? child['upnp:albumArtURI'][0] : child['upnp:albumArtURI'];
       const albumArtURI = albumArtVal || null;
       const upnpClass = child['upnp:class'] || '';
-      const isContainer =
-        upnpClass.includes('object.container') || (!uri && Boolean(child?.$?.id));
+      const isContainer = upnpClass.includes('object.container');
       const meta = builder.buildObject({ 'DIDL-Lite': { $: rootAttrs, [isContainer ? 'container' : 'item']: child } });
       const idAttr = child?.$?.id || '';
+      const browseId = idAttr;
       let formattedAlbumArtURI = albumArtURI;
       if (albumArtURI && !albumArtURI.startsWith('http://') && !albumArtURI.startsWith('https://')) {
         formattedAlbumArtURI = `http://${deviceIP}:${port}${albumArtURI}`;
@@ -34,6 +34,7 @@ async function parseDIDL(xml: string, deviceIP: string = '192.0.2.1', port = 140
         metaData: meta,
         isContainer,
         id: idAttr,
+        browseId,
       };
     })
   );
