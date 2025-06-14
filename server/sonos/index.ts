@@ -633,129 +633,55 @@ export class SonosHandler {
     }
   }
 
-  async browseFavorite(id: string) {
-    if (!this.deviceIP) {
-      throw new Error('Sonos device IP is not set.');
-    }
+  async browseFavorite(objectId: string, speakerIP: string): Promise<any[]> {
+    const soapBody = `
+      <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
+        <ObjectID>${objectId}</ObjectID>
+        <BrowseFlag>BrowseDirectChildren</BrowseFlag>
+        <Filter>*</Filter>
+        <StartingIndex>0</StartingIndex>
+        <RequestedCount>100</RequestedCount>
+        <SortCriteria></SortCriteria>
+      </u:Browse>
+  `   ;
 
-    this.sendLog(`[browseFavorite] Browsing favorite ${id}`);
-    const url = `http://${this.deviceIP}:${this.port}/MediaServer/ContentDirectory/Control`;
-    const soapAction = '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"';
-    const request = `<?xml version="1.0" encoding="utf-8"?>
-      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-        <s:Body>
-          <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
-            <ObjectID>${this.escape(id)}</ObjectID>
-            <BrowseFlag>BrowseDirectChildren</BrowseFlag>
-            <Filter>*</Filter>
-            <StartingIndex>0</StartingIndex>
-            <RequestedCount>100</RequestedCount>
-            <SortCriteria></SortCriteria>
-          </u:Browse>
-        </s:Body>
-      </s:Envelope>`;
+  const envelope = `
+    <?xml version="1.0" encoding="utf-8"?>
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" 
+                s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+      <s:Body>${soapBody}</s:Body>
+    </s:Envelope>
+  `;
 
-    try {
-      const response = await axios({
-        method: 'POST',
-        url: url,
-       headers: {
-          'SOAPAction': soapAction,
-          'Content-Type': 'text/xml; charset=utf-8',
-        },
-        data: request,
-      });
+  const url = `http://${speakerIP}:1400/MediaServer/ContentDirectory/Control`;
 
-      const respText = typeof response.data === 'string' ? response.data : String(response.data);
-      this.sendLog(`[browseFavorite] SOAP response: ${respText.slice(0, 200)}...`);
+  const headers = {
+    'Content-Type': 'text/xml; charset="utf-8"',
+    SOAPACTION: '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"',
+  };
 
-      const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
-      const parsed = await parser.parseStringPromise(response.data);
+  try {
+    const { data } = await axios.post(url, envelope, { headers });
+    const result = await xml2js.parseStringPromise(data, { explicitArray: false });
 
-      const envelope = parsed?.['s:Envelope'];
-      if (!envelope) {
-        this.sendError('[browseFavorite] SOAP response missing s:Envelope');
-        return [];
-      }
-      const body = envelope?.['s:Body'];
-      if (!body) {
-        this.sendError('[browseFavorite] SOAP response missing s:Body');
-        return [];
-      }
-      const browseResp = body?.['u:BrowseResponse'];
-      if (!browseResp) {
-        this.sendError('[browseFavorite] SOAP response missing u:BrowseResponse');
-        return [];
-      }
+    const rawResult = result['s:Envelope']?.['s:Body']?.['u:BrowseResponse']?.Result;
 
-      const numberReturned = parseInt(browseResp?.['NumberReturned'] || '0', 10);
-      const totalMatches = parseInt(browseResp?.['TotalMatches'] || '0', 10);
-      this.sendLog(`[browseFavorite] NumberReturned: ${numberReturned}, TotalMatches: ${totalMatches}`);
+    const parsed = await xml2js.parseStringPromise(rawResult, {
+      explicitArray: false,
+      ignoreAttrs: false,
+    });
 
-      const resultStr = browseResp?.['Result'];
-      if (!resultStr) {
-        this.sendError('[browseFavorite] SOAP response missing u:BrowseResponse.Result');
-        return [];
-      }
-      this.sendLog(`[browseFavorite] Parsed result: ${resultStr.slice(0, 200)}...`);
-      const metadataParser = new xml2js.Parser({ explicitArray: true, ignoreAttrs: false });
-      const metaResult = await metadataParser.parseStringPromise(resultStr);
-      this.sendLog(`[browseFavorite] Raw meta result: ${JSON.stringify(metaResult).slice(0, 200)}...`);
-      const rootAttrs = metaResult['DIDL-Lite'].$ || {};
-      const containers: any[] = metaResult['DIDL-Lite']['container'] || [];
-      const items: any[] = metaResult['DIDL-Lite']['item'] || [];
+    const items = parsed['DIDL-Lite']?.item;
+    if (!items) return [];
 
-    const allItems = [...containers, ...items].filter(Boolean);
-
-    const builder = new xml2js.Builder({ headless: true });
-
-    const children = await Promise.all(
-      allItems.map(async (child: any) => {
-        const title = child['dc:title'] || 'Unknown Title';
-        const childRes = child['res'];
-        const resEntry = Array.isArray(childRes) ? childRes[0] : childRes;
-        const uri = typeof resEntry === 'object' ? resEntry._ : resEntry || null;
-        const artVal = Array.isArray(child['upnp:albumArtURI'])
-          ? child['upnp:albumArtURI'][0]
-          : child['upnp:albumArtURI'];
-        const albumArtURI = artVal || null;
-        const upnpClass = child['upnp:class'] || '';
-        const isContainer = upnpClass.includes('object.container');
-        const meta = builder.buildObject({ 'DIDL-Lite': { $: rootAttrs, [isContainer ? 'container' : 'item']: child } });
-        const idAttr = child?.$?.id || '';
-        const browseId = idAttr;
-
-        let formattedAlbumArtURI = albumArtURI;
-        if (albumArtURI && !albumArtURI.startsWith('http://') && !albumArtURI.startsWith('https://')) {
-          formattedAlbumArtURI = `http://${this.deviceIP}:${this.port}${albumArtURI}`;
-        }
-
-        const encodedAlbumArtURI = formattedAlbumArtURI ? await this.getImageData(formattedAlbumArtURI) : null;
-
-        return {
-          title,
-          uri,
-          albumArt: encodedAlbumArtURI || null,
-          metaData: meta,
-          isContainer,
-          id: idAttr,
-          browseId,
-        };
-      })
-    );
-
-    this.sendLog(
-      `[browseFavorite] Parsed ${children.length} child items (NumberReturned=${numberReturned}, TotalMatches=${totalMatches})`
-    );
-
-      return children;
-    } catch (error: any) {
-      this.sendError(
-        `Error browsing favorite: ${error.response ? error.response.data : error.message}`,
-      );
-      throw error;
-    }
+    // Always return an array
+    return Array.isArray(items) ? items : [items];
+  } catch (error) {
+    console.error('Error in browseFavorite:', error);
+    return [];
   }
+}
+
 
   async getFavoriteContainer(id: string) {
     this.sendLog(`[getFavoriteContainer] Fetching children for ${id}`);

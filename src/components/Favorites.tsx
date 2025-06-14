@@ -31,17 +31,8 @@ const Favorites = () => {
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    DeskThing.send({
-      app: 'sonos-webapp',
-      type: 'get',
-      request: 'favorites',
-    });
-
-    DeskThing.send({
-      app: 'sonos-webapp',
-      type: 'get',
-      request: 'zoneGroupState',
-    });
+    DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'favorites' });
+    DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'zoneGroupState' });
 
     const handleFavorite = (socketData: SocketData) => {
       if (socketData.type === 'favorites') {
@@ -89,17 +80,21 @@ const Favorites = () => {
     };
 
     const handleFavoriteChildren = (socketData: SocketData) => {
-      if (socketData.type === 'favoriteChildren') {
-        console.log('Received favoriteChildren:', socketData.payload);
+      console.log('[Favorites] Received browseFavoriteResults:', socketData.payload);
+
+      if (socketData.type === 'browseFavoriteResults') {
+        console.log('Received browseFavoriteResults:', socketData.payload);
         setModalItems(socketData.payload);
         setShowModal(true);
+        console.log('[Favorites] Showing modal with items:', socketData.payload);
+
       }
     };
 
     const removeFavoritesListener = DeskThing.on('favorites', handleFavorite);
     const removeZoneGroupStateListener = DeskThing.on('zoneGroupState', handleZoneGroupState);
     const removeSelectedSpeakersListener = DeskThing.on('selectedSpeakers', handleSelectedSpeaker);
-    const removeFavChildrenListener = DeskThing.on('favoriteChildren', handleFavoriteChildren);
+    const removeFavChildrenListener = DeskThing.on('browseFavoriteResults', handleFavoriteChildren);
 
     return () => {
       removeFavoritesListener();
@@ -141,11 +136,28 @@ const Favorites = () => {
 
   const handleFavoriteClick = (favorite: Favorite) => {
     if (favorite.isContainer) {
+      if (selectedSpeakerUUIDs.length === 0) {
+        alert('Please select at least one speaker to browse this favorite.');
+        return;
+      }
+
+      const firstUUID = selectedSpeakerUUIDs[0];
+      const selectedSpeaker = speakers.find((s) => s.uuid === firstUUID);
+      const speakerIP = extractIPAddress(selectedSpeaker?.location || '');
+
+      if (!speakerIP) {
+        console.warn('Could not determine speaker IP');
+        return;
+      }
+
       DeskThing.send({
         app: 'sonos-webapp',
-        type: 'get',
+        type: 'set',
         request: 'browseFavorite',
-        payload: { id: favorite.browseId || favorite.id },
+        payload: {
+          objectId: favorite.browseId || favorite.id,
+          speakerIP,
+        },
       });
     } else {
       if (selectedSpeakerUUIDs.length === 0) {
@@ -219,7 +231,7 @@ const Favorites = () => {
         })}
       </div>
 
-      <h2>Will load here</h2>
+      <h2>Favorites</h2>
       <div className="favorites-grid">
         {favorites.map((favorite) => (
           <div
@@ -232,13 +244,24 @@ const Favorites = () => {
           </div>
         ))}
       </div>
+
       {showModal && (
         <FavoriteModal
           items={modalItems}
           onClose={() => setShowModal(false)}
           onPlay={(fav) => handleFavoriteClick(fav)}
           onBrowse={(fav) =>
-            DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'browseFavorite', payload: { id: fav.browseId || fav.id } })
+            DeskThing.send({
+              app: 'sonos-webapp',
+              type: 'set',
+              request: 'browseFavorite',
+              payload: {
+                objectId: fav.browseId || fav.id,
+                speakerIP: extractIPAddress(
+                  speakers.find((s) => selectedSpeakerUUIDs.includes(s.uuid))?.location || ''
+                ),
+              },
+            })
           }
         />
       )}

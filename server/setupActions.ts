@@ -7,8 +7,10 @@ import { SocketData } from '@deskthing/types';
 export const setupActions = () => {
   console.log('[Sonos] Registering DeskThing listeners.');
 
+  
   DeskThing.on('set', async (socketData: SocketData) => {
     console.log(`[Sonos] Received SET: ${JSON.stringify(socketData)}`);
+    
 
     const { request, payload } = socketData;
 
@@ -88,6 +90,19 @@ export const setupActions = () => {
         }
         break;
 
+      case 'browseFavorite':
+        console.log('[DeskThing] Received browseFavorite payload:', payload);
+
+        if (payload?.objectId && payload?.speakerIP) {
+        const results = await sonos.browseFavorite(payload.objectId, payload.speakerIP);
+          DeskThing.send({
+          app: 'sonos-webapp',
+          type: 'browseFavoriteResults',
+          payload: results,
+        });
+        }
+        break;
+        
       case 'pause':
         if (sonos.deviceIP) {
           await sonos.pause(sonos.deviceIP);
