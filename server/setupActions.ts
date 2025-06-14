@@ -90,19 +90,21 @@ export const setupActions = () => {
         }
         break;
 
-      case 'browseFavorite':
-        console.log('[DeskThing] Received browseFavorite payload:', payload);
-
-        if (payload?.objectId && payload?.speakerIP) {
+     case 'browseFavorite':
+         if (payload?.objectId && payload?.speakerIP) {
         const results = await sonos.browseFavorite(payload.objectId, payload.speakerIP);
-          DeskThing.send({
+        console.log('[Sonos] Sending browseFavoriteResults:', results);
+
+        DeskThing.send({
           app: 'sonos-webapp',
           type: 'browseFavoriteResults',
           payload: results,
         });
+        } else {
+        console.warn('[browseFavorite] Missing objectId or speakerIP in payload.');
         }
         break;
-        
+
       case 'pause':
         if (sonos.deviceIP) {
           await sonos.pause(sonos.deviceIP);
