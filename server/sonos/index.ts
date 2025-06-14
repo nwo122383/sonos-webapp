@@ -84,7 +84,7 @@ export class SonosHandler {
     method: 'POST',
     headers: {
       'Content-Type': 'text/xml; charset="utf-8"',
-      'SOAPAction': `"${action}"`,
+      'SOAPAction': `"${service}#${action}"`,
     },
     body: soapEnvelope,
   });
