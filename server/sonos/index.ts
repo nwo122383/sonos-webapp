@@ -696,8 +696,12 @@ export class SonosHandler {
       allItems.map(async (child: any) => {
         const title = child['dc:title'] || 'Unknown Title';
         const childRes = child['res'];
-        const uri = typeof childRes === 'object' ? childRes._ : childRes || null;
-        const albumArtURI = child['upnp:albumArtURI'] || null;
+        const resEntry = Array.isArray(childRes) ? childRes[0] : childRes;
+        const uri = typeof resEntry === 'object' ? resEntry._ : resEntry || null;
+        const artVal = Array.isArray(child['upnp:albumArtURI'])
+          ? child['upnp:albumArtURI'][0]
+          : child['upnp:albumArtURI'];
+        const albumArtURI = artVal || null;
         const upnpClass = child['upnp:class'] || '';
         const isContainer =
           upnpClass.includes('object.container') || (!uri && Boolean(child?.$?.id));

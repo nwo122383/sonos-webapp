@@ -11,6 +11,7 @@
     "build-server": "esbuild server/index.ts --bundle --platform=node --target=node14 --format=cjs --outfile=server/index.js",
     "setup": "node setup.js",
     "lint": "eslint .",
+    "test": "node --loader tsm ./test/browseFavoriteParser.test.ts",
     "preview": "vite preview",
     "dev:vite": "vite",
     "dev:wrapper": "npx @deskthing/cli dev"
