@@ -40,8 +40,9 @@ const Favorites = () => {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [selectedSpeakerUUIDs, setSelectedSpeakerUUIDs] = useState<string[]>([]);
-  const [modalItems, setModalItems] = useState<Favorite[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [selectedFavoriteId, setSelectedFavoriteId] = useState<string | null>(null);
+  const [selectedSpeakerIP, setSelectedSpeakerIP] = useState<string>('');
 
   useEffect(() => {
     DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'favorites' });
@@ -82,36 +83,13 @@ const Favorites = () => {
       }
     };
 
-    const handleBrowseResults = (() => {
-      let lastAlertTime = 0;
-
-      return (data: SocketData) => {
-        if (data.type !== 'browseFavoriteResults') return;
-
-        console.log('[Favorites] Received browseFavoriteResults:', data.payload);
-
-        if (Array.isArray(data.payload) && data.payload.length > 0) {
-          setModalItems(data.payload);
-          setShowModal(true);
-        } else {
-          const now = Date.now();
-          if (now - lastAlertTime > 3000) {
-            alert('No items found in this favorite. It may not be playable.');
-            lastAlertTime = now;
-          }
-        }
-      };
-    })();
-
     const off1 = DeskThing.on('favorites', handleFavorite);
     const off2 = DeskThing.on('zoneGroupState', handleZoneGroupState);
     const off3 = DeskThing.on('selectedSpeakers', handleSelectedSpeakers);
-    const off4 = DeskThing.on('browseFavoriteResults', handleBrowseResults);
     return () => {
       off1();
       off2();
       off3();
-      off4();
     };
   }, []);
 
@@ -148,6 +126,12 @@ const Favorites = () => {
     }
 
     if (!favorite.uri) {
+      // Open the modal to browse a container favorite and fetch its children
+      setSelectedFavoriteId(objectId);
+      setSelectedSpeakerIP(speakerIP);
+      setShowModal(true);
+
+      // Request the children so FavoriteModal can display them
       DeskThing.send({
         app: 'sonos-webapp',
         type: 'set',
@@ -219,28 +203,11 @@ const Favorites = () => {
         ))}
       </div>
 
-      {showModal && (
+      {showModal && selectedFavoriteId && (
         <FavoriteModal
-          items={modalItems}
+          favoriteId={selectedFavoriteId}
+          speakerIP={selectedSpeakerIP}
           onClose={() => setShowModal(false)}
-          onPlay={(fav) => handleFavoriteClick(fav)}
-          onBrowse={(fav) => {
-            const speaker = speakers.find((s) => selectedSpeakerUUIDs.includes(s.uuid));
-            const speakerIP = extractIPAddress(speaker?.location || '');
-            const objectId = extractItemIdFromMetaData(fav.metaData) || fav.browseId || fav.id;
-
-            if (!speakerIP) {
-              console.warn('No speaker IP found for browsing container');
-              return;
-            }
-
-            DeskThing.send({
-              app: 'sonos-webapp',
-              type: 'set',
-              request: 'browseFavorite',
-              payload: { objectId, speakerIP },
-            });
-          }}
         />
       )}
 
