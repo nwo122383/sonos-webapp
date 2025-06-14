@@ -675,6 +675,11 @@ export class SonosHandler {
         this.sendError('[browseFavorite] SOAP response missing u:BrowseResponse');
         return [];
       }
+
+      const numberReturned = parseInt(browseResp?.['NumberReturned'] || '0', 10);
+      const totalMatches = parseInt(browseResp?.['TotalMatches'] || '0', 10);
+      this.sendLog(`[browseFavorite] NumberReturned: ${numberReturned}, TotalMatches: ${totalMatches}`);
+
       const resultStr = browseResp?.['Result'];
       if (!resultStr) {
         this.sendError('[browseFavorite] SOAP response missing u:BrowseResponse.Result');
@@ -722,7 +727,9 @@ export class SonosHandler {
       })
     );
 
-    this.sendLog(`[browseFavorite] Parsed ${children.length} child items`);
+    this.sendLog(
+      `[browseFavorite] Parsed ${children.length} child items (NumberReturned=${numberReturned}, TotalMatches=${totalMatches})`
+    );
 
       return children;
     } catch (error: any) {
