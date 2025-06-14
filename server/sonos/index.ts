@@ -592,8 +592,19 @@ export class SonosHandler {
             }
           }
 
-          const isContainer = upnpClass.includes('object.container') || (!uri && !!item?.$?.id);
-          const id = item?.$?.id || '';
+          const isContainer = upnpClass.includes('object.container');
+          let id = item?.$?.id || '';
+          let browseId = id;
+
+          if (isContainer && metaData) {
+            try {
+              const meta = await metadataParser.parseStringPromise(metaData);
+              const metaItem = meta['DIDL-Lite']?.item || meta['DIDL-Lite']?.container;
+              browseId = metaItem?.$?.id || id;
+            } catch (err: any) {
+              this.sendError(`Error extracting container id: ${err.message}`);
+            }
+          }
 
           let formattedAlbumArtURI = albumArtURI;
           if (albumArtURI && !albumArtURI.startsWith('http://') && !albumArtURI.startsWith('https://')) {
@@ -609,6 +620,7 @@ export class SonosHandler {
             metaData,
             isContainer,
             id,
+            browseId,
           };
         })
       );
@@ -708,10 +720,10 @@ export class SonosHandler {
           : child['upnp:albumArtURI'];
         const albumArtURI = artVal || null;
         const upnpClass = child['upnp:class'] || '';
-        const isContainer =
-          upnpClass.includes('object.container') || (!uri && Boolean(child?.$?.id));
+        const isContainer = upnpClass.includes('object.container');
         const meta = builder.buildObject({ 'DIDL-Lite': { $: rootAttrs, [isContainer ? 'container' : 'item']: child } });
         const idAttr = child?.$?.id || '';
+        const browseId = idAttr;
 
         let formattedAlbumArtURI = albumArtURI;
         if (albumArtURI && !albumArtURI.startsWith('http://') && !albumArtURI.startsWith('https://')) {
@@ -727,6 +739,7 @@ export class SonosHandler {
           metaData: meta,
           isContainer,
           id: idAttr,
+          browseId,
         };
       })
     );

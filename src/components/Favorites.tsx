@@ -12,6 +12,7 @@ export interface Favorite {
   metaData: string;
   isContainer: boolean;
   id: string;
+  browseId: string;
 }
 
 interface Speaker {
@@ -144,7 +145,7 @@ const Favorites = () => {
         app: 'sonos-webapp',
         type: 'get',
         request: 'browseFavorite',
-        payload: { id: favorite.id },
+        payload: { id: favorite.browseId || favorite.id },
       });
     } else {
       if (selectedSpeakerUUIDs.length === 0) {
@@ -237,7 +238,7 @@ const Favorites = () => {
           onClose={() => setShowModal(false)}
           onPlay={(fav) => handleFavoriteClick(fav)}
           onBrowse={(fav) =>
-            DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'browseFavorite', payload: { id: fav.id } })
+            DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'browseFavorite', payload: { id: fav.browseId || fav.id } })
           }
         />
       )}
