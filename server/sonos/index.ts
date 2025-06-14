@@ -1,7 +1,7 @@
 // server/sonos/index.ts
 
 import axios from 'axios';
-import xml2js from 'xml2js';
+import xml2js, { parseStringPromise } from 'xml2js';
 import { createDeskThing, DeskThingClass } from '@deskthing/server';
 import { GenericTransitData } from '@deskthing/types';
 import { encode } from 'base64-arraybuffer';
