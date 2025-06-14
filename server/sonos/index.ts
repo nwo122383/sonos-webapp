@@ -84,7 +84,7 @@ export class SonosHandler {
     method: 'POST',
     headers: {
       'Content-Type': 'text/xml; charset="utf-8"',
-      'SOAPAction': `"${service}#${action}"`,
+      SOAPAction: `"${service}#${action}"`,
     },
     body: soapEnvelope,
   });
@@ -93,7 +93,16 @@ export class SonosHandler {
 
   if (!res.ok) {
     console.error(`[SOAP ERROR ${res.status}] ${text}`);
-    throw new Error(`SOAP Request Failed: ${res.status} ${res.statusText}`);
+    let code: string | undefined;
+    try {
+      const parsed = await parseStringPromise(text);
+      code =
+        parsed['s:Envelope']?.['s:Body']?.[0]?.['s:Fault']?.[0]?.detail?.[0]?.UPnPError?.[0]?.errorCode?.[0];
+    } catch (e) {
+      /* ignore parse errors */
+    }
+    const msg = `SOAP Request Failed: ${res.status} ${res.statusText}`;
+    throw new Error(code ? `${msg} (code ${code})` : msg);
   }
 
   this.sendLog(`[SOAP Response] ${text.slice(0, 200)}...`);
@@ -724,6 +733,14 @@ export class SonosHandler {
     return browseResults;
   } catch (err) {
     console.error('[Sonos] Error in browseFavorite:', err);
+
+    const message = err instanceof Error ? err.message : 'Unknown error';
+
+    DeskThing.send({
+      app: 'sonos-webapp',
+      type: 'browseFavoriteError',
+      payload: message,
+    });
 
     DeskThing.send({
       app: 'sonos-webapp',

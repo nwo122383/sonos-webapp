@@ -33,7 +33,13 @@ const FavoriteModal: React.FC<FavoriteModalProps> = ({ favoriteId, speakerIP, on
       }
     };
 
+    const handleError = (msg: string) => {
+      console.log('[FavoriteModal] Received browseFavoriteError:', msg);
+      setError(msg || 'Failed to browse favorite.');
+    };
+
     DeskThing.on('browseFavoriteResults', handleResults);
+    DeskThing.on('browseFavoriteError', handleError);
 
     DeskThing.send({
       app: 'sonos-webapp',
@@ -47,6 +53,7 @@ const FavoriteModal: React.FC<FavoriteModalProps> = ({ favoriteId, speakerIP, on
 
     return () => {
       DeskThing.off('browseFavoriteResults', handleResults);
+      DeskThing.off('browseFavoriteError', handleError);
     };
   }, [favoriteId, speakerIP]);
 
