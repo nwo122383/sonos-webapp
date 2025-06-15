@@ -52,11 +52,11 @@ export class SonosHandler {
     this.sendSoapRequest = this.sendSoapRequest.bind(this);
   }
   private async sendSoapRequest({ action, service, body, ip }: {
-  action: string;
-  service: string;
-  body: string;
-  ip: string;
-}): Promise<string> {
+    action: string;
+    service: string;
+    body: string;
+    ip: string;
+  }): Promise<string> {
   // Determine the correct endpoint based on the service
   let url: string;
   if (service === 'urn:schemas-upnp-org:service:ContentDirectory:1') {
@@ -101,8 +101,13 @@ export class SonosHandler {
     } catch (e) {
       /* ignore parse errors */
     }
+    const codeMessages: Record<string, string> = {
+      '701': 'Content not found or invalid object ID',
+      '804': 'Unable to add item to queue',
+    };
+    const codeInfo = code ? `code ${code}${codeMessages[code] ? ` - ${codeMessages[code]}` : ''}` : '';
     const msg = `SOAP Request Failed: ${res.status} ${res.statusText}`;
-    throw new Error(code ? `${msg} (code ${code})` : msg);
+    throw new Error(codeInfo ? `${msg} (${codeInfo})` : msg);
   }
 
   this.sendLog(`[SOAP Response] ${text.slice(0, 200)}...`);
