@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { DeskThing, SocketData } from '@deskthing/client';
 import './Favorites.css';
 import FavoriteModal from './FavoriteModal';
+import SlideOutPanel from './SlideOutPanel';
 
 export interface Favorite {
   uri: string | null;
@@ -43,6 +44,8 @@ const Favorites = () => {
   const [showModal, setShowModal] = useState(false);
   const [selectedFavoriteId, setSelectedFavoriteId] = useState<string | null>(null);
   const [selectedSpeakerIP, setSelectedSpeakerIP] = useState<string>('');
+  const [panelItems, setPanelItems] = useState<Favorite[]>([]);
+  const [panelOpen, setPanelOpen] = useState<boolean>(false);
 
   useEffect(() => {
     DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'favorites' });
@@ -83,13 +86,27 @@ const Favorites = () => {
       }
     };
 
+    const handleBrowseResults = (data: SocketData) => {
+      if (data.type === 'browseFavoriteResults') {
+        const items = data.payload || [];
+        if (items.length === 0) {
+          alert('No items found in this favorite. It may not be playable.');
+        } else {
+          setPanelItems(items);
+          setPanelOpen(true);
+        }
+      }
+    };
+
     const off1 = DeskThing.on('favorites', handleFavorite);
     const off2 = DeskThing.on('zoneGroupState', handleZoneGroupState);
     const off3 = DeskThing.on('selectedSpeakers', handleSelectedSpeakers);
+    const off4 = DeskThing.on('browseFavoriteResults', handleBrowseResults);
     return () => {
       off1();
       off2();
       off3();
+      off4();
     };
   }, []);
 
@@ -126,12 +143,6 @@ const Favorites = () => {
     }
 
     if (!favorite.uri) {
-      // Open the modal to browse a container favorite and fetch its children
-      setSelectedFavoriteId(objectId);
-      setSelectedSpeakerIP(speakerIP);
-      setShowModal(true);
-
-      // Request the children so FavoriteModal can display them
       DeskThing.send({
         app: 'sonos-webapp',
         type: 'set',
@@ -150,6 +161,11 @@ const Favorites = () => {
         },
       });
     }
+  };
+
+  const handleClosePanel = () => {
+    setPanelOpen(false);
+    setPanelItems([]);
   };
 
   return (
@@ -203,41 +219,13 @@ const Favorites = () => {
         ))}
       </div>
 
-      {showModal && selectedFavoriteId && (
-        <FavoriteModal
-          favoriteId={selectedFavoriteId}
-          speakerIP={selectedSpeakerIP}
-          onClose={() => setShowModal(false)}
-        />
-      )}
-
-      <div className="debug-buttons" style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '30px' }}>
-        {favorites.map((fav, i) => {
-          const id = extractItemIdFromMetaData(fav.metaData) || fav.browseId || fav.id;
-          const speakerIP = extractIPAddress(speakers.find((s) => selectedSpeakerUUIDs.includes(s.uuid))?.location || '');
-          return (
-            <div key={i} style={{ flex: '1 1 300px' }}>
-              <div style={{ fontSize: '0.8em', marginBottom: '4px' }}>{fav.title}</div>
-              {['', 'S:', 'A:', 'A:10fe2064show:', 'FV:2/'].map((prefix, j) => (
-                <button
-                  key={j}
-                  style={{ padding: '8px', width: '100%', background: '#222', color: '#fff' }}
-                  onClick={() =>
-                    DeskThing.send({
-                      app: 'sonos-webapp',
-                      type: 'set',
-                      request: 'browseFavorite',
-                      payload: { objectId: prefix + id, speakerIP },
-                    })
-                  }
-                >
-                  Format {j + 1} ({prefix || 'raw'})
-                </button>
-              ))}
-            </div>
-          );
-        })}
-      </div>
+      <SlideOutPanel
+        isOpen={panelOpen}
+        items={panelItems}
+        onClose={handleClosePanel}
+        onPlay={(fav) => handleFavoriteClick(fav)}
+        onBrowse={(fav) => handleFavoriteClick(fav)}
+      />
     </div>
   );
 };
