@@ -100,6 +100,29 @@ export const setupActions = () => {
           });
         }
         break;
+      case 'shuffle': {
+        // Accept 'on' | 'off' | 'toggle' (default toggle)
+        const raw = typeof payload === 'string' ? payload : payload?.state;
+        const state = (raw === 'on' || raw === 'off' || raw === 'toggle' ? raw : 'toggle') as 'on' | 'off' | 'toggle';
+        try {
+          await sonos.shuffle(state);
+        } catch (e) {
+          console.error('[shuffle] failed:', e);
+        }
+        break;
+      }
+
+      case 'repeat': {
+       // Accept both "all" | "one" | "off" OR { state: "all" | "one" | "off" }
+      const raw = typeof payload === 'string' ? payload : payload?.state;
+      const state = (raw === 'all' || raw === 'one' || raw === 'off' ? raw : 'off') as 'off' | 'all' | 'one';
+        try {
+          await sonos.repeat(state);
+        } catch (e) {
+          console.error('[repeat] failed:', e);
+        }
+        break;
+      }
 
       case 'pause':
         if (sonos.deviceIP) {

@@ -471,36 +471,81 @@ export class SonosHandler {
     return value.toString().padStart(2, '0');
   }
 
+  // In SonosHandler inside server/sonos/index.ts
   async repeat(state: 'off' | 'all' | 'one') {
-    let newPlayMode = 'NORMAL';
-    switch (state) {
-      case 'off':
-        newPlayMode = 'NORMAL';
-        break;
-      case 'all':
-        newPlayMode = 'REPEAT_ALL';
-        break;
-      case 'one':
-        newPlayMode = 'REPEAT_ONE';
-        break;
-      default:
-        newPlayMode = 'NORMAL';
-        break;
-    }
-    await this.execute('SetPlayMode', { NewPlayMode: newPlayMode });
-    this.sendLog(`Repeat mode set to ${state}`);
+  const current = await this.getCurrentPlayMode();
+  const pm = (current || 'NORMAL').toUpperCase();
+
+  const shuffleOn = pm === 'SHUFFLE' || pm === 'SHUFFLE_NOREPEAT';
+
+  let NewPlayMode: string;
+  switch (state) {
+    case 'off':
+      NewPlayMode = shuffleOn ? 'SHUFFLE_NOREPEAT' : 'NORMAL';
+      break;
+    case 'all':
+      NewPlayMode = shuffleOn ? 'SHUFFLE' : 'REPEAT_ALL';
+      break;
+    case 'one':
+      // Sonos doesn't combine shuffle with repeat-one
+      NewPlayMode = 'REPEAT_ONE';
+      break;
+    default:
+      NewPlayMode = shuffleOn ? 'SHUFFLE_NOREPEAT' : 'NORMAL';
+      break;
   }
 
-  async shuffle(state: boolean) {
-    let newPlayMode = 'NORMAL';
-    if (state) {
-      newPlayMode = 'SHUFFLE_NOREPEAT';
-    } else {
-      newPlayMode = 'NORMAL';
-    }
-    await this.execute('SetPlayMode', { NewPlayMode: newPlayMode });
-    this.sendLog(`Shuffle mode set to ${state ? 'on' : 'off'}`);
-  }
+  await this.execute('SetPlayMode', { InstanceID: 0, NewPlayMode });
+  this.sendLog(`Repeat set to ${state} (PlayMode=${NewPlayMode})`);
+
+  // UI notify (DeskThing)
+  DeskThing.send({
+    app: 'sonos-webapp',
+    type: 'repeatState',
+    payload: { repeat: state, playMode: NewPlayMode },
+  });
+}
+
+
+
+  async shuffle(state: 'on' | 'off' | 'toggle' = 'toggle') {
+  // Read current play mode, map to flags
+  const current = await this.getCurrentPlayMode();
+  const pm = (current || 'NORMAL').toUpperCase();
+
+  const isShuffle = pm === 'SHUFFLE' || pm === 'SHUFFLE_NOREPEAT';
+  let nextShuffle = isShuffle;
+  if (state === 'toggle') nextShuffle = !isShuffle;
+  if (state === 'on') nextShuffle = true;
+  if (state === 'off') nextShuffle = false;
+
+  // Compute current repeat state
+  let repeat: 'off' | 'all' | 'one' = 'off';
+  if (pm === 'REPEAT_ALL' || pm === 'SHUFFLE') repeat = 'all';
+  else if (pm === 'REPEAT_ONE') repeat = 'one';
+
+  // REPEAT_ONE ignores shuffle; force shuffle off in that case
+  if (repeat === 'one') nextShuffle = false;
+
+  // Build final Sonos play mode
+  let NewPlayMode = 'NORMAL';
+  if (repeat === 'one') NewPlayMode = 'REPEAT_ONE';
+  else if (nextShuffle && repeat === 'all') NewPlayMode = 'SHUFFLE';
+  else if (nextShuffle && repeat === 'off') NewPlayMode = 'SHUFFLE_NOREPEAT';
+  else if (!nextShuffle && repeat === 'all') NewPlayMode = 'REPEAT_ALL';
+  else NewPlayMode = 'NORMAL';
+
+  await this.execute('SetPlayMode', { InstanceID: 0, NewPlayMode });
+  this.sendLog(`Shuffle ${nextShuffle ? 'ON' : 'OFF'} (PlayMode=${NewPlayMode})`);
+
+  // Notify UI using DeskThing (NOT this.send)
+  DeskThing.send({
+    app: 'sonos-webapp',
+    type: 'shuffleState',
+    payload: { shuffle: nextShuffle, playMode: NewPlayMode },
+  });
+}
+
 
   async updatePlayMode() {
     let playMode = 'NORMAL';
