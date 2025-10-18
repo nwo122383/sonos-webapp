@@ -7,6 +7,3 @@
  this also shows the now playing album art and track info on the screen and you can control the volume. 
  If anyone wants to use it will be an alpha/early beta i guess.
 
-## Browsing Favorites
-
-Container favorites (such as folders or playlists) can now be explored. Clicking a favorite that represents a container opens a modal showing its children. Items in the modal can be played directly or, if they are containers themselves, browsed further.
