@@ -1,28 +1,76 @@
-.volume-buttons {
+/* Scoped to VolumeControl only (vc-*) */
+
+.vc-root {
+  display: grid;
+  gap: 10px;
+  color: #eaeaea; /* dark UI assumed */
+}
+
+.vc-header {
   display: flex;
-  justify-content: center;
-  margin-top: 1rem;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.volume-plus-button,
-.volume-minus-button {
-  background-color: #1e90ff;
-  color: white;
-  border: none;
-  padding: 0.5rem 1.2rem;
-  margin: 0 0.5rem;
-  font-size: 1.4rem;
-  border-radius: 6px;
+.vc-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.vc-chiprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Chip base — resemble Favorites */
+.vc-chip {
+  padding: 10px 16px;
+  font-size: 14px;
   cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid #2a2a2a;
+  background: #008cba;
+  color: #fff;
+  transition: filter 120ms ease-in-out, transform 60ms ease-in-out;
+}
+.vc-chip:hover { filter: brightness(1.06); }
+.vc-chip:active { transform: scale(0.98); }
+
+.vc-chip--selected {
+  background: #00000039;
+  color: rgba(255, 255, 255, 0.95);
+  border-color: #3d3d3d;
 }
 
-.volume-plus-button:hover,
-.volume-minus-button:hover {
-  background-color: #007acc;
+.vc-chip--all {
+  background: #008cba;
+}
+.vc-chip--all-selected {
+  background: #222;
 }
 
+/* Controls row */
+.vc-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
 
+.vc-btn {
+  padding: 8px 14px;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 6px;
+  background: #1f1f1f;
+  color: #eaeaea;
+  border: 1px solid #2a2a2a;
+}
+.vc-btn:hover { filter: brightness(1.06); }
+.vc-btn:active { transform: scale(0.98); }
 
-#volume-control h2 {
-  color: #ffffff; /* or any color you want */
+.vc-readout {
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }

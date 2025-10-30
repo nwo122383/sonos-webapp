@@ -1,4 +1,5 @@
 // server/initializer.ts
+import './sonos/augmentPlayLatest'; // <-- ensure the method is attached before actions run
 
 import {
   AUDIO_REQUESTS,
@@ -7,12 +8,12 @@ import {
   SongEvent,
   GenericTransitData
 } from "@deskthing/types";
-
 import { setupSettings } from './setupSettings';
 import { setupActions } from './setupActions';
 import { setupGetters } from './setupGetters';
 import { setupTasks } from './setupTasks';
-
+import { setupGlobalVolume } from './globalVolume';
+import { playLatestFromFavorite } from "./playLatestFromFavorite";
 import { createDeskThing, DeskThingClass } from '@deskthing/server';
 
 
@@ -26,6 +27,7 @@ export const initialize = async () => {
   setupActions();
   setupGetters();
   setupTasks();
+  setupGlobalVolume();
 };
 
 // Example event listener (extendable in future)

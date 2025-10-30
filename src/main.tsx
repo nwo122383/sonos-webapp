@@ -1,13 +1,24 @@
+// src/main.tsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import ErrorBoundary from './ErrorBoundary';
+import { SettingsProvider } from './contexts/SettingsContext';
 import './index.css';
-import { SettingsProvider } from './providers/SettingsProvider';
 
+const rootEl = document.getElementById('root');
+if (!rootEl) {
+  const el = document.createElement('div');
+  el.id = 'root';
+  document.body.appendChild(el);
+}
 
-const root = ReactDOM.createRoot(document.getElementById('app') as HTMLElement);
-root.render(
-  <SettingsProvider>
-    <App />
-  </SettingsProvider>
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <ErrorBoundary>
+      <SettingsProvider>
+        <App />
+      </SettingsProvider>
+    </ErrorBoundary>
+  </React.StrictMode>
 );

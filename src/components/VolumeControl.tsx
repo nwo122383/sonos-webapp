@@ -1,113 +1,111 @@
+// ===============================
 // src/components/VolumeControl.tsx
+// ===============================
+//
+// Volume selection UI (decoupled).
+// - Chips manage only selectedVolumeSpeakers
+// - +/- buttons send adjustVolume with explicit speakerUUIDs
+// - Never touches selectSpeakers/selectPlaybackSpeakers
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { DeskThing } from '@deskthing/client';
 import './VolumeControl.css';
 
-interface Speaker {
-  uuid: string;
-  zoneName: string;
-}
+type Speaker = { uuid: string; zoneName: string };
+
+const toArray = <T,>(v: unknown, fb: T[] = []): T[] => (Array.isArray(v) ? (v as T[]) : fb);
 
 const VolumeControl: React.FC = () => {
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
-  const volumeFetchTimeout = useRef<NodeJS.Timeout | null>(null);
+  const volumeFetchTimeout = useRef<number | null>(null);
 
   useEffect(() => {
     DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'speakersList' });
     DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'selectedVolumeSpeakers' });
 
-    const unsubSpeakers = DeskThing.on('speakersList', (data) => {
-      const all = data.payload as { uuid: string; zoneName: string }[];
-      setSpeakers(all);
-
-      // fallback if none selected
-      if (all.length && selected.length === 0) {
-        const fallback = all[0].uuid;
-        setSelected([fallback]);
-        DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'set',
-          request: 'selectVolumeSpeakers',
-          payload: { uuids: [fallback] },
-        });
-      }
+    const offSpeakers = DeskThing.on('speakersList', (msg) => {
+      setSpeakers(toArray<Speaker>((msg as any)?.payload));
     });
 
-    const unsubSelected = DeskThing.on('selectedVolumeSpeakers', (data) => {
-      if (data.payload?.uuids) {
-        setSelected(data.payload.uuids);
-      }
+    const offVolSel = DeskThing.on('selectedVolumeSpeakers', (msg) => {
+      setSelected(toArray<string>((msg as any)?.payload?.uuids));
     });
 
-    return () => {
-      unsubSpeakers();
-      unsubSelected();
-    };
+    return () => { try { offSpeakers?.(); offVolSel?.(); } catch {} };
   }, []);
 
-  const toggleVolumeSpeaker = (uuid: string) => {
-    const updated = selected.includes(uuid)
-      ? selected.filter((u) => u !== uuid)
-      : [...selected, uuid];
-
-    setSelected(updated);
-
+  const pushSelection = (uuids: string[]) => {
+    setSelected(uuids);
     DeskThing.send({
       app: 'sonos-webapp',
       type: 'set',
       request: 'selectVolumeSpeakers',
-      payload: { uuids: updated },
+      payload: { uuids },
     });
   };
 
-  const adjustVolume = (delta: number) => {
+  const toggleChip = (uuid: string) => {
+    const next = selected.includes(uuid) ? selected.filter(u => u !== uuid) : [...selected, uuid];
+    pushSelection(next);
+  };
+
+  const toggleAll = () => {
+    const all = speakers.map(s => s.uuid);
+    const next = selected.length === speakers.length ? [] : all;
+    pushSelection(next);
+  };
+
+  const adjust = (delta: number) => {
+    if (selected.length === 0) return;
     DeskThing.send({
       app: 'sonos-webapp',
       type: 'set',
       request: 'adjustVolume',
-      payload: { delta },
+      payload: { delta, speakerUUIDs: selected },
     });
-
-    // Debounce fetching the updated volume after the change
-    if (volumeFetchTimeout.current) {
-      clearTimeout(volumeFetchTimeout.current);
-    }
-
-    volumeFetchTimeout.current = setTimeout(() => {
-      selected.forEach((uuid) => {
-        DeskThing.send({
-          app: 'sonos-webapp',
-          type: 'get',
-          request: 'volume',
-          payload: { speakerUUIDs: [uuid] },
-        });
-      });
-    }, 500);
+    // Optional: refresh volume after a short debounce
+    if (volumeFetchTimeout.current) window.clearTimeout(volumeFetchTimeout.current);
+    volumeFetchTimeout.current = window.setTimeout(() => {
+      DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'volume' });
+    }, 300);
   };
 
+  const allSelected = speakers.length > 0 && selected.length === speakers.length;
+
   return (
-    <div id="volume-control">
-      <h2>Volume Speakers</h2>
-      <div className="speakers-list">
-        {speakers.map((speaker) => (
-          <div key={speaker.uuid} style={{ marginBottom: '0.5rem' }}>
-            <button
-              className={`p-2 rounded m-1 ${
-                selected.includes(speaker.uuid) ? 'bg-green-600' : 'bg-gray-100'
-              }`}
-              onClick={() => toggleVolumeSpeaker(speaker.uuid)}
-            >
-              {speaker.zoneName}
-            </button>
-          </div>
-        ))}
+    <div id="volume-control" className="vc-root">
+      <div className="vc-header">
+        <h2>Volume Speakers</h2>
+        <button
+          className={`vc-chip vc-chip--all ${allSelected ? 'vc-chip--all-selected' : ''}`}
+          onClick={toggleAll}
+          title={allSelected ? 'Deselect all' : 'Select all'}
+        >
+          {allSelected ? 'Deselect All' : 'Select All'}
+        </button>
       </div>
 
-      <div className="volume-controls mt-4">
-        <button onClick={() => adjustVolume(-5)} className="volume-minus-button">-</button>
-        <button onClick={() => adjustVolume(5)} className="volume-plus-button">+</button>
+      <div className="vc-chiprow">
+        {speakers.map((sp) => {
+          const sel = selected.includes(sp.uuid);
+          return (
+            <button
+              key={sp.uuid}
+              className={`vc-chip ${sel ? 'vc-chip--selected' : ''}`}
+              onClick={() => toggleChip(sp.uuid)}
+              title={sp.zoneName}
+            >
+              {sp.zoneName}
+            </button>
+          );
+        })}
+        {speakers.length === 0 && <span className="vc-loading">No speakers found.</span>}
+      </div>
+
+      <div className="vc-controls">
+        <button className="vc-btn" onClick={() => adjust(-5)} aria-label="Volume down">–</button>
+        <button className="vc-btn" onClick={() => adjust(+5)} aria-label="Volume up">+</button>
       </div>
     </div>
   );

@@ -11,7 +11,7 @@ export const setupSettings = async () => {
       label: 'Sonos IP Address',
       description: 'The IP address of your Sonos speaker or group coordinator.',
       type: SETTING_TYPES.STRING,
-      value: '192.168.4.109',
+      value: '192.168.5.246',
     },
     dark_mode: {
       id: 'dark_mode',

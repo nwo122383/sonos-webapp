@@ -28,6 +28,75 @@ class SelectedSpeakerStore {
     }
     return SelectedSpeakerStore.instance;
   }
+
+  // Play the newest child (episode) of a container favorite
+  async playLatestFromFavorite(objectId: string, speakerIP: string, speakerUUIDs: string[]) {
+    const soapBody = `
+      <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
+        <ObjectID>${objectId}</ObjectID>
+        <BrowseFlag>BrowseDirectChildren</BrowseFlag>
+        <Filter>*</Filter>
+        <StartingIndex>0</StartingIndex>
+        <RequestedCount>100</RequestedCount>
+        <SortCriteria></SortCriteria>
+      </u:Browse>`;
+
+    const url = `http://${speakerIP}:1400/MediaServer/ContentDirectory/Control`;
+    const headers = {
+      'Content-Type': 'text/xml; charset="utf-8"',
+      'SOAPACTION': '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"',
+    };
+
+    try {
+      this.sendLog(`[playLatestFromFavorite] Browsing children of ${objectId} on ${speakerIP}`);
+
+      const resp = await axios.post(url, `<?xml version="1.0" encoding="utf-8"?>
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
+                    s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>${soapBody}</s:Body>
+        </s:Envelope>`, { headers });
+
+      const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
+      const envelope = await parser.parseStringPromise(resp.data);
+      const resultXml =
+        envelope?.['s:Envelope']?.['s:Body']?.['u:BrowseResponse']?.['Result'] ||
+        envelope?.['Envelope']?.['Body']?.['BrowseResponse']?.['Result'] ||
+        '';
+
+      if (!resultXml) throw new Error('Empty browse result.');
+
+      const didl = await parser.parseStringPromise(resultXml);
+      let items = didl?.['DIDL-Lite']?.item || [];
+      if (!Array.isArray(items)) items = items ? [items] : [];
+
+      const builder = new xml2js.Builder({ headless: true, rootName: 'DIDL-Lite' });
+      const normalized = items
+        .map((it: any) => {
+          const res = typeof it?.res === 'object' ? it.res?._ : it?.res;
+          const dateStr =
+            it?.['dc:date'] ||
+            it?.['upnp:originalBroadcastDate'] ||
+            '';
+          const t = Date.parse(dateStr || '') || 0;
+          const meta = builder.buildObject({ item: it });
+          return { uri: res || null, title: it?.['dc:title'] || 'Unknown', date: t, metaData: meta };
+        })
+        .filter((x: any) => !!x.uri);
+
+      if (normalized.length === 0) throw new Error('No playable episodes found in this container.');
+
+      normalized.sort((a, b) => b.date - a.date);
+      const latest = normalized[0];
+
+      await this.playFavoriteOnSpeakers(latest.uri, speakerUUIDs, latest.metaData);
+      this.sendLog(`[playLatestFromFavorite] Playing latest episode: ${latest.title}`);
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to resolve latest episode.';
+      this.sendError(`[playLatestFromFavorite] ${msg}`);
+      throw err;
+    }
+  }
+
 }
 export class SonosHandler {
   deviceIP: string | null = null;
@@ -853,7 +922,7 @@ export class SonosHandler {
   }
   
   
-  async playFavoriteOnSpeakers(uri: any, speakerUUIDs: string[]) {
+  async playFavoriteOnSpeakers(uri: any, speakerUUIDs: string[], metaData?: string) {
     if (speakerUUIDs.length === 0) {
       throw new Error('No speakers selected to play the favorite.');
     }
@@ -874,7 +943,7 @@ export class SonosHandler {
 
     this.deviceIP = coordinatorIP;
     const uriString = typeof uri === 'object' && uri ? uri._ : uri;
-    await this.playFavorite(uriString);
+    await this.playFavorite(uriString, metaData);
 
     if (this.selectedSpeakerUUIDs && !this.selectedSpeakerUUIDs.includes(coordinatorUUID)) {
       this.selectedSpeakerUUIDs.unshift(coordinatorUUID);
