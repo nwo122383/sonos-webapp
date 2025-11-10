@@ -1,194 +1,240 @@
 // src/components/NowPlaying.tsx
-// (Same functionality as your current, only styles are bigger via CSS below)
-
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DeskThing } from '@deskthing/client';
 import type { SocketData } from '@deskthing/types';
 import './NowPlaying.css';
+import { ScrollingText } from './ScrollingText';
 
-type NowPlayingData = {
+type NowPlayingWire = {
   title?: string;
   artist?: string;
   album?: string;
   albumArt?: string;
+  thumbnail?: string;
+  image?: string;
   isPlaying?: boolean;
-  position?: number;
-  duration?: number;
+  position?: number; // seconds
+  duration?: number; // seconds
 };
 
 type Props = {
-  selectedSpeakerUUIDs: string[];
+  selectedSpeakerUUIDs: string[];  // can be empty; we send volumeChange elsewhere
   currentVolume: number;
   onLocalVolumeChange: (vol: number) => void;
 };
 
-type TransportState = 'PLAYING' | 'PAUSED_PLAYBACK' | 'STOPPED' | 'UNKNOWN';
-type Speaker = { uuid: string; zoneName: string };
-
 const clamp = (v: number, min = 0, max = 100) => Math.min(max, Math.max(min, v));
-const normalizeThumb = (t?: string | null): string | undefined =>
-  !t ? undefined : t.startsWith('data:') || t.startsWith('http') ? t : `data:image/jpeg;base64,${t}`;
-const secondsToClock = (n?: number): string => {
-  if (!n || n < 0 || !isFinite(n)) return '0:00';
-  const m = Math.floor(n / 60);
-  const s = Math.floor(n % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
+
+const normalizeThumb = (t?: string | null): string | undefined => {
+  if (!t) return undefined;
+  if (t.startsWith('data:') || t.startsWith('http')) return t;
+  return `data:image/jpeg;base64,${t}`;
 };
 
+const toClock = (s?: number): string => {
+  if (!s || s < 0 || !Number.isFinite(s)) return '0:00';
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = Math.floor(s % 60);
+  return hh > 0
+    ? `${hh}:${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}`
+    : `${mm}:${ss.toString().padStart(2, '0')}`;
+};
+
+function makeTrackKey(p: Partial<NowPlayingWire>): string {
+  // A simple “what track are we on?” key
+  const t = (p.title || '').trim();
+  const a = (p.artist || '').trim();
+  const al = (p.album || '').trim();
+  return `${t}::${a}::${al}`;
+}
+
 const NowPlaying: React.FC<Props> = ({ selectedSpeakerUUIDs, currentVolume, onLocalVolumeChange }) => {
-  const [np, setNp] = useState<NowPlayingData>({});
-  const [muted, setMuted] = useState<boolean>(false);
-  const [transportState, setTransportState] = useState<TransportState>('UNKNOWN');
-  const [speakers, setSpeakers] = useState<Speaker[]>([]);
-  const [playbackSel, setPlaybackSel] = useState<string[]>([]);
+  // Canonical “what’s playing”
+  const [title, setTitle] = useState<string>('');
+  const [artist, setArtist] = useState<string>('');
+  const [album, setAlbum] = useState<string>('');
+  const [albumArt, setAlbumArt] = useState<string | undefined>(undefined);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+
+  // Time/progress (seconds)
+  const [position, setPosition] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
+
+  // Derived
+  const progressPct = useMemo(() => {
+    if (!duration || duration <= 0) return 0;
+    const p = Math.max(0, Math.min(position, duration));
+    return (p / duration) * 100;
+  }, [position, duration]);
+
+  // Internal refs to manage timers
   const tickRef = useRef<number | null>(null);
+  const pollRef = useRef<number | null>(null);
+  const driftRef = useRef<number | null>(null);
+  const lastTrackKeyRef = useRef<string>('');
 
+  // --- transport controls ---
+  const play = () => DeskThing.send({ app: 'sonos-webapp', type: 'set', request: 'play' });
+  const pause = () => DeskThing.send({ app: 'sonos-webapp', type: 'set', request: 'pause' });
+  const quickMute = () => {
+    // Use your existing mute toggle (server toggles if no state is given)
+    DeskThing.send({ app: 'sonos-webapp', type: 'set', request: 'mute', payload: { state: 'toggle' } });
+  };
+
+  // Merge “song/music” payloads into state
+  const ingestWire = (wire: NowPlayingWire) => {
+    const nextTitle = String(wire.title ?? '').trim()
+      || String((wire as any).track_name ?? '').trim()
+      || String((wire as any).name ?? '').trim();
+    const nextArtist = String(wire.artist ?? '').trim();
+    const nextAlbum = String(wire.album ?? '').trim();
+    const nextArt = normalizeThumb(wire.albumArt || wire.thumbnail || wire.image);
+
+    const nextKey = makeTrackKey({ title: nextTitle, artist: nextArtist, album: nextAlbum });
+
+    // If track changed, reset timers and ask the server for fresh positionInfo
+    if (nextKey && nextKey !== lastTrackKeyRef.current) {
+      lastTrackKeyRef.current = nextKey;
+      setPosition(0);
+      // If wired duration exists in payload, use it; otherwise we’ll fetch.
+      setDuration(Number.isFinite(wire.duration || NaN) ? Number(wire.duration) : 0);
+      // Ask server for positionInfo immediately to lock in accurate counters
+      DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'positionInfo' });
+    }
+
+    setTitle(nextTitle);
+    setArtist(nextArtist);
+    setAlbum(nextAlbum);
+    setAlbumArt(nextArt);
+    if (typeof wire.isPlaying === 'boolean') {
+      setIsPlaying(wire.isPlaying);
+    }
+  };
+
+  // Subscriptions
   useEffect(() => {
-    const ingest = (p: any): NowPlayingData => ({
-      title: p?.track_name ?? p?.title ?? p?.name ?? '',
-      artist: p?.artist ?? '',
-      album: p?.album ?? '',
-      albumArt: normalizeThumb(p?.thumbnail ?? p?.albumArt ?? p?.image),
-      isPlaying: p?.isPlaying ?? undefined,
-      position: typeof p?.position === 'number' ? p.position : undefined,
-      duration: typeof p?.duration === 'number' ? p.duration : undefined,
-    });
-
     const offSong = DeskThing.on('song', (data: SocketData) => {
-      if (data.type !== 'song') return;
-      setNp(ingest(data.payload));
+      if (data?.type !== 'song') return;
+      ingestWire((data.payload || {}) as NowPlayingWire);
     });
     const offMusic = DeskThing.on('music', (data: SocketData) => {
-      if (data.type !== 'music') return;
-      setNp(ingest(data.payload));
+      if (data?.type !== 'music') return;
+      ingestWire((data.payload || {}) as NowPlayingWire);
+    });
+    const offTransport = DeskThing.on('transportState', (data: SocketData) => {
+      if (data?.type !== 'transportState') return;
+      const s = String((data.payload as any)?.state || '').toUpperCase();
+      setIsPlaying(s === 'PLAYING');
+      // Also refresh position so UI snaps to the device’s counters
+      DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'positionInfo' });
+    });
+    const offPos = DeskThing.on('positionInfo', (data: SocketData) => {
+      if (data?.type !== 'positionInfo') return;
+      const pos = Number((data.payload as any)?.position ?? 0);
+      const dur = Number((data.payload as any)?.duration ?? 0);
+      if (Number.isFinite(pos)) setPosition(pos);
+      if (Number.isFinite(dur)) setDuration(dur);
     });
 
-    const offMute = DeskThing.on('mute', (msg: SocketData) => {
-      if (msg.type !== 'mute') return;
-      const m = (msg.payload as any)?.muted;
-      if (typeof m === 'boolean') setMuted(m);
-    });
-    const offState = DeskThing.on('transportState', (msg: SocketData) => {
-      if (msg.type !== 'transportState') return;
-      const s = String((msg.payload as any)?.state || 'UNKNOWN').toUpperCase();
-      setTransportState(
-        s === 'PLAYING' || s === 'PAUSED_PLAYBACK' || s === 'STOPPED' ? (s as TransportState) : 'UNKNOWN'
-      );
-    });
-
-    const offSpeakers = DeskThing.on('speakersList', (msg: SocketData) => {
-      if (msg.type !== 'speakersList') return;
-      const list = Array.isArray(msg.payload) ? msg.payload : [];
-      setSpeakers(list.map((s: any) => ({ uuid: s.uuid, zoneName: s.zoneName })));
-    });
-    const offSelPlayback = DeskThing.on('selectedPlaybackSpeakers', (msg: SocketData) => {
-      if (msg.type !== 'selectedPlaybackSpeakers') return;
-      const uuids: string[] = (msg.payload as any)?.uuids || [];
-      if (Array.isArray(uuids)) setPlaybackSel(uuids);
-    });
-
-    DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'mute' });
+    // Initial snapshots so the widget has data right away
     DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'transportState' });
-    DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'speakersList' });
-    DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'selectedPlaybackSpeakers' });
+    DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'positionInfo' });
 
     return () => {
-      offSong();
-      offMusic();
-      try { offMute?.(); offState?.(); offSpeakers?.(); offSelPlayback?.(); } catch {}
+      try { offSong?.(); offMusic?.(); offTransport?.(); offPos?.(); } catch {}
     };
   }, []);
 
+  // Local ticker when playing: we count 1s locally, but correct using periodic server polls
   useEffect(() => {
-    if (tickRef.current) window.clearInterval(tickRef.current);
-    const playing =
-      transportState === 'PLAYING' || (transportState === 'UNKNOWN' && np.isPlaying === true);
-    if (!playing || !np.duration || np.duration <= 0) return;
+    // Clear any existing intervals
+    if (tickRef.current) { window.clearInterval(tickRef.current); tickRef.current = null; }
+    if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
+    if (driftRef.current) { window.clearTimeout(driftRef.current); driftRef.current = null; }
 
-    tickRef.current = window.setInterval(() => {
-      setNp((prev) => {
-        if (!prev.duration) return prev;
-        const nextPos = Math.min((prev.position ?? 0) + 1, prev.duration);
-        return { ...prev, position: nextPos };
-      });
-    }, 1000);
-    return () => { if (tickRef.current) window.clearInterval(tickRef.current); };
-  }, [transportState, np.isPlaying, np.duration]);
+    if (isPlaying) {
+      // 1) local increment each second (only if we actually have a position)
+      tickRef.current = window.setInterval(() => {
+        setPosition((p) => {
+          if (duration > 0) return Math.min(duration, p + 1);
+          return p + 1;
+        });
+      }, 1000);
 
-  const progress = useMemo(() => {
-    const pos = np.position ?? 0;
-    const dur = np.duration ?? 0;
-    if (dur <= 0) return 0;
-    return Math.min(100, Math.max(0, (pos / dur) * 100));
-  }, [np.position, np.duration]);
+      // 2) ask device for authoritative counters every 3s to correct drift
+      pollRef.current = window.setInterval(() => {
+        DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'positionInfo' });
+      }, 3000);
 
-  const isPlaying =
-    transportState === 'PLAYING'
-      ? true
-      : transportState === 'PAUSED_PLAYBACK' || transportState === 'STOPPED'
-      ? false
-      : !!np.isPlaying;
+      // 3) small delayed correction after starting playback
+      driftRef.current = window.setTimeout(() => {
+        DeskThing.send({ app: 'sonos-webapp', type: 'get', request: 'positionInfo' });
+      }, 750);
+    }
 
-  const togglePlayPause = () => {
-    DeskThing.send({ app: 'sonos-webapp', type: 'set', request: isPlaying ? 'pause' : 'play' });
-  };
-  const toggleMute = () =>
-    DeskThing.send({ app: 'sonos-webapp', type: 'set', request: 'mute', payload: { state: 'toggle' } });
+    return () => {
+      if (tickRef.current) window.clearInterval(tickRef.current);
+      if (pollRef.current) window.clearInterval(pollRef.current);
+      if (driftRef.current) window.clearTimeout(driftRef.current);
+      tickRef.current = null;
+      pollRef.current = null;
+      driftRef.current = null;
+    };
+  }, [isPlaying, duration]);
 
-  const speakerMap = useMemo(() => {
-    const m = new Map<string, string>();
-    speakers.forEach((s) => m.set(s.uuid, s.zoneName));
-    return m;
-  }, [speakers]);
-  const primaryUUID =
-    (playbackSel && playbackSel[0]) ||
-    (Array.isArray(selectedSpeakerUUIDs) && selectedSpeakerUUIDs[0]) ||
-    '';
-  const speakerName = primaryUUID ? speakerMap.get(primaryUUID) || 'Unknown Speaker' : 'Unknown Speaker';
+  // UI bits
+  const leftTime = toClock(position);
+  const rightTime = duration > 0 ? toClock(duration) : '—';
+  const showProgress = duration > 0;
 
   return (
-    <div className="np">
-      <div className="np__art">
-        {np.albumArt ? <img src={np.albumArt} alt="" /> : <div className="np__noart">No Art</div>}
+    <div className="nowplaying">
+      <div className="nowplaying__art">
+        {albumArt ? (
+          <img src={albumArt} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <span style={{ fontSize: 11, color: '#888', textAlign: 'center', padding: 4 }}>No Art</span>
+        )}
       </div>
 
-      <div className="np__center">
-        <div className="np__line1">
-          <div className="np__title" title={np.title || ''}>{np.title || '—'}</div>
-          <div className="np__metaRight">
-            <span className="np__vol">Vol&nbsp;{clamp(currentVolume)}%</span>
-            <span className="np__dot">•</span>
-            <span className="np__speaker" title={speakerName}>{speakerName}</span>
-          </div>
+      <div className="nowplaying__meta">
+        <div className="nowplaying__title" title={title || ''}>
+          <ScrollingText text={title || '—'} fadeWidth={40} />
         </div>
-        <div className="np__artist" title={np.artist || ''}>{np.artist || '—'}</div>
+        <div
+          className="nowplaying__artist"
+          title={`${artist || 'Unknown Artist'}${album ? ` • ${album}` : ''}`}
+        >
+          <ScrollingText
+            text={`${artist || 'Unknown Artist'}${album ? ` • ${album}` : ''}`}
+            fadeWidth={40}
+          />
+        </div>
 
-        <div className="np__progress">
-          <div className="np__bar"><div className="np__barFill" style={{ width: `${progress}%` }} /></div>
-          <div className="np__time">
-            <span>{secondsToClock(np.position)}</span>
-            <span>{secondsToClock(np.duration)}</span>
+        <div className="nowplaying__progress">
+          <div className="nowplaying__bar" aria-hidden={!showProgress}>
+            <div
+              className="nowplaying__barFill"
+              style={{ width: showProgress ? `${progressPct}%` : '0%' }}
+            />
+          </div>
+          <div className="nowplaying__time">
+            <span>{leftTime}</span>
+            <span>{rightTime}</span>
           </div>
         </div>
       </div>
 
-      <div className="np__controls">
-        <button
-          className="np__btn"
-          onClick={togglePlayPause}
-          title={isPlaying ? 'Pause' : 'Play'}
-          aria-label={isPlaying ? 'Pause' : 'Play'}
-        >
-          {isPlaying ? '⏸' : '▶'}
-        </button>
-        <button
-          className={`np__btn ${muted ? 'np__btn--active' : ''}`}
-          onClick={toggleMute}
-          title={muted ? 'Unmute' : 'Mute'}
-          aria-label={muted ? 'Unmute' : 'Mute'}
-        >
-          {muted ? '🔇' : '🔈'}
-        </button>
+      <div className="nowplaying__controls">
+        {isPlaying ? (
+          <button className="nowplaying__btn nowplaying__btn--accent" onClick={pause} aria-label="Pause">⏸</button>
+        ) : (
+          <button className="nowplaying__btn nowplaying__btn--accent" onClick={play} aria-label="Play">▶</button>
+        )}
+        <button className="nowplaying__btn" onClick={quickMute} aria-label="Mute">🔇</button>
+        {/* Volume percent display (unchanged) */}
+        <div className="nowplaying__vol">{currentVolume}%</div>
       </div>
     </div>
   );

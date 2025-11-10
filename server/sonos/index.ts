@@ -5,6 +5,14 @@ import xml2js, { parseStringPromise } from 'xml2js';
 import { createDeskThing, DeskThingClass } from '@deskthing/server';
 import { GenericTransitData } from '@deskthing/types';
 import { encode } from 'base64-arraybuffer';
+import {
+  normalizeObjectIdForBrowse,
+  extractObjectIdFromMeta,
+  extractObjectIdFromFavoriteUri,
+  browseFavoriteSmart,
+  BrowseResultItem,
+} from '../browseSmart';
+import { browseSmapi, FavoriteItem } from '../smapi';
 
 const DeskThing: DeskThingClass<GenericTransitData, GenericTransitData> = createDeskThing();
 
@@ -31,9 +39,10 @@ class SelectedSpeakerStore {
 
   // Play the newest child (episode) of a container favorite
   async playLatestFromFavorite(objectId: string, speakerIP: string, speakerUUIDs: string[]) {
+    const { soapId, normalized } = this.resolveSoapObjectId(objectId);
     const soapBody = `
       <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
-        <ObjectID>${objectId}</ObjectID>
+        <ObjectID>${soapId}</ObjectID>
         <BrowseFlag>BrowseDirectChildren</BrowseFlag>
         <Filter>*</Filter>
         <StartingIndex>0</StartingIndex>
@@ -48,7 +57,7 @@ class SelectedSpeakerStore {
     };
 
     try {
-      this.sendLog(`[playLatestFromFavorite] Browsing children of ${objectId} on ${speakerIP}`);
+      this.sendLog(`[playLatestFromFavorite] Browsing children of ${objectId} (normalized: ${normalized}) on ${speakerIP}`);
 
       const resp = await axios.post(url, `<?xml version="1.0" encoding="utf-8"?>
         <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"
@@ -98,6 +107,7 @@ class SelectedSpeakerStore {
   }
 
 }
+
 export class SonosHandler {
   deviceIP: string | null = null;
   port: number = 1400;
@@ -119,6 +129,188 @@ export class SonosHandler {
 
   constructor() {
     this.sendSoapRequest = this.sendSoapRequest.bind(this);
+  }
+
+  private ensureAlbumArtAbsolute(art: string | undefined | null, speakerIP: string): string | null {
+    if (!art || typeof art !== 'string') return null;
+    if (/^https?:\/\//i.test(art)) return art;
+    const bareHost = speakerIP.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    const hostWithPort = bareHost.includes(':') ? bareHost : `${bareHost}:1400`;
+    const path = art.startsWith('/') ? art : `/${art}`;
+    return `http://${hostWithPort}${path}`;
+  }
+
+  private extractAlbumArtFromMeta(meta?: string | null, speakerIP?: string): string | null {
+    if (!meta) return null;
+    const raw = meta.match(/<upnp:albumArtURI[^>]*>([^<]+)<\/upnp:albumArtURI>/i);
+    const unescaped = meta.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    const esc = raw?.[1] ? raw[1] : unescaped.match(/<upnp:albumArtURI[^>]*>([^<]+)<\/upnp:albumArtURI>/i)?.[1];
+    if (!esc) return null;
+    return speakerIP ? this.ensureAlbumArtAbsolute(esc, speakerIP) : esc;
+  }
+
+  private extractAccountId(meta?: string | null, uri?: string | null): string | null {
+    if (uri) {
+      const match = uri.match(/[?&]sn=(\d+)/i);
+      if (match?.[1]) return match[1];
+    }
+    if (meta) {
+      const unescaped = meta.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      const m = unescaped.match(/<r:accountId[^>]*>([^<]+)<\/r:accountId>/i);
+      if (m?.[1]) return m[1];
+    }
+    return null;
+  }
+
+  private extractDateFromMeta(meta?: string | null): string | null {
+    if (!meta) return null;
+    const inspect = (input: string): string | null => {
+      const dc = input.match(/<dc:date[^>]*>([^<]+)<\/dc:date>/i);
+      if (dc?.[1]) return dc[1];
+      const obd = input.match(/<upnp:originalBroadcastDate[^>]*>([^<]+)<\/upnp:originalBroadcastDate>/i);
+      if (obd?.[1]) return obd[1];
+      const release = input.match(/<releaseDate[^>]*>([^<]+)<\/releaseDate>/i);
+      if (release?.[1]) return release[1];
+      return null;
+    };
+    const direct = inspect(meta);
+    if (direct) return direct;
+    const unescaped = meta.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    return inspect(unescaped);
+  }
+
+  private mapBrowseResultItems(items: BrowseResultItem[], speakerIP: string) {
+    return items.map((item) => ({
+      uri: item.uri || null,
+      title: item.title || 'Unknown',
+      albumArt: this.extractAlbumArtFromMeta(item.metaData || '', speakerIP) || null,
+      metaData: item.metaData || '',
+      isContainer: Boolean(item.class && item.class.includes('object.container')),
+      id: item.id || item.browseId || item.title || '',
+      browseId: item.browseId || item.id || '',
+      releaseDate: item.date || this.extractDateFromMeta(item.metaData || '') || null,
+    }));
+  }
+
+  private mapSmapiItems(items: FavoriteItem[], speakerIP: string) {
+    return items.map((item) => {
+      const rawArt = item.albumArt || null;
+      const albumArt =
+        !rawArt
+          ? null
+          : rawArt.startsWith('data:')
+            ? rawArt
+            : this.ensureAlbumArtAbsolute(rawArt, speakerIP) || rawArt;
+
+      return {
+        uri: item.uri || null,
+        title: item.title || 'Unknown',
+        albumArt,
+        metaData: item.metaData || '',
+        isContainer: !!item.isContainer,
+        id: item.id || item.browseId || item.title || '',
+        browseId: item.browseId || item.id || '',
+        releaseDate: this.extractDateFromMeta(item.metaData || '') || null,
+      };
+    });
+  }
+
+  private async browseFavoriteViaSmapi(
+    favorite: any | undefined,
+    objectId: string,
+    speakerIP: string
+  ) {
+    if (!favorite?.metaData) {
+      return [];
+    }
+
+    const encodedObjectId =
+      favorite.rawObjectId ||
+      extractObjectIdFromMeta(favorite.metaData) ||
+      objectId;
+
+    try {
+      console.log('[Sonos] Attempting SMAPI browse for', encodedObjectId);
+      const items = await browseSmapi({
+        speakerIP,
+        objectId: encodedObjectId,
+        metaData: favorite.metaData,
+        accountId: favorite.accountId,
+      });
+      if (!items.length) return [];
+      return this.mapSmapiItems(items, speakerIP);
+    } catch (err) {
+      console.warn('[Sonos] SMAPI browse fallback failed:', err);
+      return [];
+    }
+  }
+
+  private findFavoriteMatch(objectId: string, normalized?: string) {
+    return this.favoritesList.find((fav) => {
+      const ids = [fav?.objectId, fav?.browseId, fav?.id, fav?.rawObjectId].filter(Boolean);
+      return ids.includes(objectId) || (normalized ? ids.includes(normalized) : false);
+    });
+  }
+
+  private resolveSoapObjectId(objectId: string) {
+    const normalized = normalizeObjectIdForBrowse(objectId);
+    const favorite = this.findFavoriteMatch(objectId, normalized);
+    const raw = favorite?.rawObjectId;
+    const soapId =
+      raw ||
+      favorite?.objectIdFromUri ||
+      (/%[0-9A-Fa-f]{2}/.test(objectId) ? objectId : encodeURIComponent(normalized));
+    return { favorite, normalized, soapId };
+  }
+
+  private async tryBrowseFavoriteSmart(
+    requestedObjectId: string,
+    normalizedObjectId: string,
+    speakerIP: string
+  ) {
+    const { favorite, soapId } = this.resolveSoapObjectId(requestedObjectId);
+    const metaData = favorite?.metaData;
+    try {
+      console.log('[Sonos] Invoking browseFavoriteSmart fallback for', requestedObjectId, 'normalized', normalizedObjectId);
+      const { items } = await browseFavoriteSmart(soapId, speakerIP, metaData, {
+        emit: (stage: string, data: any) => {
+          console.log('[Sonos][browseFavoriteSmart]', stage, data);
+        },
+      });
+      console.log('[Sonos] browseFavoriteSmart returned items:', items.length);
+      const mapped = this.mapBrowseResultItems(items, speakerIP);
+      if (mapped.length) return mapped;
+    } catch (fallbackError) {
+      console.warn('[Sonos] browseFavoriteSmart fallback failed:', fallbackError);
+    }
+
+    const smapiResults = await this.browseFavoriteViaSmapi(favorite, requestedObjectId, speakerIP);
+    if (smapiResults.length) return smapiResults;
+    return [];
+  }
+
+  private resolveAlternateObjectId(objectId: string): string | null {
+    if (!objectId) return null;
+    const { favorite } = this.resolveSoapObjectId(objectId);
+    if (!favorite) {
+      console.warn('[Sonos] resolveAlternateObjectId: no matching favorite for', objectId);
+      return null;
+    }
+    const metaDerived = extractObjectIdFromMeta(favorite.metaData);
+    const fallback =
+      favorite.rawObjectId ||
+      metaDerived ||
+      favorite.objectId ||
+      favorite.browseId ||
+      favorite.id ||
+      null;
+    console.warn('[Sonos] resolveAlternateObjectId: found candidate', {
+      requested: objectId,
+      fallback,
+      title: favorite.title,
+      isContainer: favorite.isContainer,
+    });
+    return fallback;
   }
   private async sendSoapRequest({ action, service, body, ip }: {
     action: string;
@@ -261,7 +453,7 @@ export class SonosHandler {
         throw new Error(`Request failed with status ${response.status}: ${response.statusText}`);
       }
 
-      const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
+      const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
       const result = await parser.parseStringPromise(response.data);
       const responseBody = result['s:Envelope']['s:Body'][`u:${action}Response`] || {};
       return responseBody;
@@ -703,7 +895,7 @@ export class SonosHandler {
 
       this.sendLog(`SOAP Response received`);
 
-      const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: true });
+      const parser = new xml2js.Parser({ explicitArray: false, ignoreAttrs: false });
       const parsedResult = await parser.parseStringPromise(response.data);
       const favoritesResult = parsedResult['s:Envelope']['s:Body']['u:BrowseResponse']['Result'];
 
@@ -725,7 +917,7 @@ export class SonosHandler {
         items.map(async (item: any) => {
           const title = item['dc:title'] || 'Unknown Title';
           const resVal = item['res'];
-          const uri = typeof resVal === 'object' ? resVal._ : resVal || null;
+          const uri = typeof resVal === 'object' ? resVal?._ : resVal || null;
           const albumArtURI = item['upnp:albumArtURI'] || null;
           const metaData = item['r:resMD'] || item['resMD'] || '';
 
@@ -741,18 +933,14 @@ export class SonosHandler {
           }
 
           const isContainer = upnpClass.includes('object.container');
-          let id = item?.$?.id || '';
-          let browseId = id;
+          const attrId = item?.$?.id || '';
+          const objectIdFromMeta = extractObjectIdFromMeta(metaData);
+          const objectIdFromUri = extractObjectIdFromFavoriteUri(uri || undefined);
+          const derivedId = objectIdFromMeta || objectIdFromUri || attrId;
+          const normalizedObjectId = derivedId ? normalizeObjectIdForBrowse(derivedId) : attrId;
 
-          if (isContainer && metaData) {
-            try {
-              const meta = await metadataParser.parseStringPromise(metaData);
-              const metaItem = meta['DIDL-Lite']?.item || meta['DIDL-Lite']?.container;
-              browseId = metaItem?.$?.id || id;
-            } catch (err: any) {
-              this.sendError(`Error extracting container id: ${err.message}`);
-            }
-          }
+          let browseId = normalizedObjectId || attrId;
+          if (!browseId && attrId) browseId = attrId;
 
           let formattedAlbumArtURI = albumArtURI;
           if (albumArtURI && !albumArtURI.startsWith('http://') && !albumArtURI.startsWith('https://')) {
@@ -761,15 +949,32 @@ export class SonosHandler {
 
           const encodedAlbumArtURI = formattedAlbumArtURI ? await this.getImageData(formattedAlbumArtURI) : null;
 
-          return {
+          const favoriteEntry = {
             title,
             uri,
             albumArt: encodedAlbumArtURI || null,
             metaData,
             isContainer,
-            id,
+            id: attrId || normalizedObjectId || title,
             browseId,
+            objectId: browseId,
+            rawObjectId: derivedId,
+            accountId: this.extractAccountId(metaData, uri),
+            objectIdFromUri: objectIdFromUri || null,
           };
+
+          console.log('[Sonos][Favorites] mapped favorite:', {
+            title,
+            attrId,
+            objectIdFromMeta,
+            objectIdFromUri,
+            browseId,
+            isContainer,
+            uri,
+            metaSample: typeof metaData === 'string' ? metaData.slice(0, 500) : '',
+          });
+
+          return favoriteEntry;
         })
       );
 
@@ -781,12 +986,14 @@ export class SonosHandler {
     }
   }
 
- async browseFavorite(objectId: string, speakerIP: string) {
-  console.log('[Sonos] Browsing favorite container:', objectId, 'on', speakerIP);
+ async browseFavorite(objectId: string, speakerIP: string, attempt = 0) {
+  const { soapId, normalized } = this.resolveSoapObjectId(objectId);
+  const normalizedObjectId = normalized;
+  console.log('[Sonos] Browsing favorite container:', objectId, '(normalized:', normalizedObjectId, ') on', speakerIP, 'attempt:', attempt);
 
   const soapBody = `
     <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
-      <ObjectID>${objectId}</ObjectID>
+      <ObjectID>${soapId}</ObjectID>
       <BrowseFlag>BrowseDirectChildren</BrowseFlag>
       <Filter>*</Filter>
       <StartingIndex>0</StartingIndex>
@@ -813,40 +1020,88 @@ export class SonosHandler {
 
     console.log('[Sonos] Raw DIDL Result (before parsing again):\n', rawResult);
 
-    const parsed = await parseStringPromise(rawResult, { explicitArray: false });
+    const didlParser = new xml2js.Parser({ explicitArray: true, ignoreAttrs: false });
+    const parsed = await didlParser.parseStringPromise(rawResult);
     console.log('[Sonos] Parsed DIDL object:', parsed);
 
-    const rawItems = parsed['DIDL-Lite']?.item;
-    console.log('[Sonos] Raw DIDL-Lite item:', rawItems);
+    const didlLite = parsed['DIDL-Lite'] || {};
+    const rootAttrs = didlLite.$ || {};
+    const containers = Array.isArray(didlLite.container)
+      ? didlLite.container
+      : didlLite.container
+        ? [didlLite.container]
+        : [];
+    const items = Array.isArray(didlLite.item)
+      ? didlLite.item
+      : didlLite.item
+        ? [didlLite.item]
+        : [];
+    const allChildren = [...containers, ...items].filter(Boolean);
 
-    const items = rawItems
-      ? Array.isArray(rawItems)
-        ? rawItems
-        : [rawItems]
-      : [];
+    const takeFirst = (value: any) => (Array.isArray(value) ? value[0] : value);
+    const ensureAlbumArt = (art: string | undefined | null) => {
+      if (!art) return null;
+      if (typeof art !== 'string') return null;
+      if (/^https?:\/\//i.test(art)) return art;
+      const bareHost = speakerIP.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+      const hostWithPort = bareHost.includes(':') ? bareHost : `${bareHost}:1400`;
+      const path = art.startsWith('/') ? art : `/${art}`;
+      return `http://${hostWithPort}${path}`;
+    };
+    const builder = new xml2js.Builder({ headless: true });
 
-    console.log('[Sonos] Final items array:', items);
+    console.log('[Sonos] Found DIDL containers:', containers.length, 'items:', items.length);
 
-    const browseResults = items.map((item) => {
-      const meta = new xml2js.Builder().buildObject({ 'DIDL-Lite': item });
+    let browseResults = allChildren.map((child) => {
+      const title = takeFirst(child?.['dc:title']) || 'Unknown';
+      const rawRes = takeFirst(child?.res);
+      let uri: string | null = null;
+      if (rawRes) {
+        uri = typeof rawRes === 'object' ? rawRes._ || null : rawRes;
+      }
+      const albumArtVal = takeFirst(child?.['upnp:albumArtURI']);
+      const upnpClass = takeFirst(child?.['upnp:class']) || '';
+      const isContainer = typeof upnpClass === 'string' && upnpClass.includes('object.container');
+      const meta = builder.buildObject({
+        'DIDL-Lite': {
+          $: rootAttrs,
+          [isContainer ? 'container' : 'item']: child,
+        },
+      });
 
       return {
-        uri: item.res?._ || item.res || null,
-        title: item['dc:title'] || 'Unknown',
-        albumArt: item['upnp:albumArtURI'] || null,
+        uri: uri || null,
+        title,
+        albumArt: this.ensureAlbumArtAbsolute(albumArtVal, speakerIP),
         metaData: meta,
-        isContainer: item['upnp:class']?.includes('container') || false,
-        id: item.$?.id || '',
-        browseId: item.$?.id || '',
+        isContainer,
+        id: child?.$?.id || '',
+        browseId: child?.$?.id || '',
       };
     });
 
-    console.log('[Sonos] Parsed browse results:', browseResults);
+    console.log('[Sonos] Parsed browse results count:', browseResults.length);
+    if (browseResults[0]) {
+      console.log('[Sonos] First browse result sample:', browseResults[0]);
+    }
+
+    if (!browseResults.length) {
+      const fallbackResults = await this.tryBrowseFavoriteSmart(objectId, normalizedObjectId, speakerIP);
+      if (fallbackResults.length) {
+        console.log('[Sonos] Using browseFavoriteSmart fallback results:', fallbackResults.length);
+        browseResults = fallbackResults;
+      } else {
+        console.warn('[Sonos] No browse results returned for objectId', objectId, 'normalized', normalizedObjectId);
+      }
+    }
 
     DeskThing.send({
       app: 'sonos-webapp',
       type: 'browseFavoriteResults',
-      payload: browseResults,
+      payload: {
+        objectId: normalizedObjectId,
+        items: browseResults,
+      },
     });
 
     return browseResults;
@@ -855,16 +1110,49 @@ export class SonosHandler {
 
     const message = err instanceof Error ? err.message : 'Unknown error';
 
+    if (!attempt) {
+      const fallbackResults = await this.tryBrowseFavoriteSmart(objectId, normalizedObjectId, speakerIP);
+      if (fallbackResults.length) {
+        DeskThing.send({
+          app: 'sonos-webapp',
+          type: 'browseFavoriteResults',
+          payload: {
+            objectId: normalizedObjectId,
+            items: fallbackResults,
+          },
+        });
+        return fallbackResults;
+      }
+    }
+
+    const shouldRetry = !attempt && message?.includes('701');
+    if (shouldRetry) {
+      const fallbackId = this.resolveAlternateObjectId(objectId);
+      if (fallbackId && fallbackId !== objectId) {
+        const normalizedFallback = normalizeObjectIdForBrowse(fallbackId);
+        console.warn(`[Sonos] Retrying browseFavorite with fallback objectId ${fallbackId} (normalized ${normalizedFallback})`);
+        return this.browseFavorite(fallbackId, speakerIP, attempt + 1);
+      } else {
+        console.warn('[Sonos] No alternate objectId available for retry', { requested: objectId, fallbackId });
+      }
+    }
+
     DeskThing.send({
       app: 'sonos-webapp',
       type: 'browseFavoriteError',
-      payload: message,
+      payload: {
+        objectId: normalizedObjectId,
+        message,
+      },
     });
 
     DeskThing.send({
       app: 'sonos-webapp',
       type: 'browseFavoriteResults',
-      payload: [],
+      payload: {
+        objectId: normalizedObjectId,
+        items: [],
+      },
     });
 
     return [];

@@ -1,16 +1,16 @@
 // server/setupActions.ts
 //
 // Decoupled volume vs. favorites/playback (kept).
-// Adds: Mute control + Transport state readback.
+// Adds: positionInfo endpoint for progress bar + (existing) Mute + Transport state.
 // - Volume: RenderingControl SetRelativeVolume / SetVolume / GetVolume
 // - Mute:   RenderingControl SetMute / GetMute
 // - State:  AVTransport GetTransportInfo (PLAYING/PAUSED_PLAYBACK/STOPPED)
-// - After play/pause we read back and emit 'transportState'.
+// - Position: AVTransport GetPositionInfo -> { position, duration } in seconds
 //
 // Volume targets are ONLY payload.speakerUUIDs or volumeSelection (never favorites/playback).
 // Favorites/playback unchanged (selectSpeakers/selectPlaybackSpeakers/playFavorite).
 //
-// NOTE: We prefer existing sonos.* for play/pause/next/prev; for state/mute/volume we use SOAP.
+// NOTE: We prefer existing sonos.* for play/pause/next/prev; for state/mute/volume/position we use SOAP.
 
 import { DeskThing } from './initializer';
 import sonos from './sonos';
@@ -22,6 +22,7 @@ const AVT_URN = 'urn:schemas-upnp-org:service:AVTransport:1';
 // Independent volume selection (decoupled)
 let volumeSelection: string[] = [];
 
+// ---------- SOAP helpers ----------
 function buildSoapEnvelope(urn: string, action: string, innerXml: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
@@ -99,7 +100,7 @@ async function getMute(ip: string): Promise<boolean> {
   return n === 1;
 }
 
-// ---------- Transport State ----------
+// ---------- Transport state ----------
 async function getTransportState(ip: string): Promise<string> {
   const body = `<InstanceID>0</InstanceID>`;
   const xml = await postSoap(ip, AVT_URN, 'GetTransportInfo', body);
@@ -109,7 +110,32 @@ async function getTransportState(ip: string): Promise<string> {
   return state;
 }
 
-// Choose a single "playback context" device IP to read state/mute from:
+// ---------- Position info (progress bar) ----------
+function parseHMS(input?: string | null): number {
+  if (!input || /NOT_IMPLEMENTED/i.test(input)) return 0;
+  const m = String(input).trim().match(/^(\d+):(\d{2}):(\d{2})$/);
+  if (!m) return 0;
+  const h = Number(m[1] || 0), mm = Number(m[2] || 0), ss = Number(m[3] || 0);
+  return h * 3600 + mm * 60 + ss;
+}
+
+async function getPositionInfo(ip: string): Promise<{ position: number; duration: number }> {
+  const body = `<InstanceID>0</InstanceID>`;
+  const xml = await postSoap(ip, AVT_URN, 'GetPositionInfo', body);
+
+  // Typical fields:
+  // <RelTime>0:01:23</RelTime>
+  // <TrackDuration>0:03:45</TrackDuration>
+  const relMatch = xml.match(/<RelTime>([^<]+)<\/RelTime>/i);
+  const durMatch = xml.match(/<TrackDuration>([^<]+)<\/TrackDuration>/i);
+
+  const rel = parseHMS(relMatch ? relMatch[1] : '');
+  const dur = parseHMS(durMatch ? durMatch[1] : '');
+
+  return { position: rel, duration: dur };
+}
+
+// Choose a single "playback context" device IP to read state/mute/position from:
 // priority: selectedPlaybackSpeakers[0] -> selectedSpeakerUUIDs[0] -> sonos.deviceIP
 async function getAnyPlaybackIP(): Promise<string | null> {
   const playback = (sonos as any).selectedPlaybackSpeakers;
@@ -129,7 +155,7 @@ async function getAnyPlaybackIP(): Promise<string | null> {
 }
 
 export const setupActions = () => {
-  console.log('[Sonos] Registering DeskThing listeners (volume/mute/state).');
+  console.log('[Sonos] Registering DeskThing listeners (volume/mute/state/position).');
 
   // ---------- SET ----------
   DeskThing.on('set', async (socketData: SocketData) => {
@@ -204,7 +230,7 @@ export const setupActions = () => {
           break;
         }
 
-        // ===== Mute (on/off/toggle) for playback context (apply to first playback target) =====
+        // ===== Mute (on/off/toggle) for playback context =====
         case 'mute': {
           const raw = typeof payload === 'string' ? payload : payload?.state;
           const mode = (raw === 'on' || raw === 'off' || raw === 'toggle') ? raw : 'toggle';
@@ -258,7 +284,7 @@ export const setupActions = () => {
               (sonos as any).selectedSpeakerUUIDs ||
               [];
             if (uuids.length > 0) {
-              await sonos.playFavoriteOnSpeakers(payload.uri, uuids);
+              await sonos.playFavoriteOnSpeakers(payload.uri, uuids, payload.metaData);
             } else {
               console.warn('[playFavorite] No speakers selected.');
             }
@@ -266,7 +292,32 @@ export const setupActions = () => {
           break;
         }
 
-        // ===== Transport controls (play/pause/next/prev) + readback state =====
+        case 'playLatestFromFavorite': {
+          const objectId = payload?.objectId;
+          const uuids: string[] =
+            (Array.isArray(payload?.speakerUUIDs) && payload.speakerUUIDs.length
+              ? payload.speakerUUIDs
+              : (sonos as any).selectedSpeakerUUIDs) || [];
+          if (!objectId) {
+            console.warn('[playLatestFromFavorite] Missing objectId.');
+            break;
+          }
+          if (!uuids.length) {
+            console.warn('[playLatestFromFavorite] No speakers selected.');
+            break;
+          }
+          const speakerIP =
+            payload?.speakerIP ||
+            (await (sonos as any).getSpeakerIPByUUID?.(uuids[0]));
+          if (!speakerIP) {
+            console.warn('[playLatestFromFavorite] Unable to resolve speaker IP.');
+            break;
+          }
+          await sonos.playLatestFromFavorite(objectId, speakerIP, uuids);
+          break;
+        }
+
+        // ===== Transport controls (play/pause/next/prev) + readback state & position =====
         case 'pause': {
           if ((sonos as any).deviceIP) await (sonos as any).pause((sonos as any).deviceIP);
           const ip = await getAnyPlaybackIP();
@@ -274,6 +325,9 @@ export const setupActions = () => {
             try {
               const state = await getTransportState(ip);
               DeskThing.send({ app: 'sonos-webapp', type: 'transportState', payload: { state } });
+              // also refresh position so UI jumps immediately
+              const info = await getPositionInfo(ip);
+              DeskThing.send({ app: 'sonos-webapp', type: 'positionInfo', payload: info });
             } catch {}
           }
           break;
@@ -285,6 +339,9 @@ export const setupActions = () => {
             try {
               const state = await getTransportState(ip);
               DeskThing.send({ app: 'sonos-webapp', type: 'transportState', payload: { state } });
+              // also refresh position so UI jumps immediately
+              const info = await getPositionInfo(ip);
+              DeskThing.send({ app: 'sonos-webapp', type: 'positionInfo', payload: info });
             } catch {}
           }
           break;
@@ -377,6 +434,21 @@ export const setupActions = () => {
           DeskThing.send({ app: 'sonos-webapp', type: 'transportState', payload: { state } });
         } catch (e) {
           console.error('[GET transportState] failed:', e);
+        }
+        break;
+      }
+      case 'positionInfo': {
+        const ip = await getAnyPlaybackIP();
+        if (!ip) { console.warn('[GET positionInfo] No playback IP.'); break; }
+        try {
+          const info = await getPositionInfo(ip); // { position, duration } in seconds
+          DeskThing.send({
+            app: 'sonos-webapp',
+            type: 'positionInfo',
+            payload: info,
+          });
+        } catch (e) {
+          console.error('[GET positionInfo] failed:', e);
         }
         break;
       }

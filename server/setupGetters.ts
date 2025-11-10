@@ -21,15 +21,20 @@ export const setupGetters = () => {
         await sonos.getZoneGroupState();
         break;
 
-      case 'browseFavorite':
-        if (payload?.id) {
-          try {
-            await sonos.getFavoriteContainer(payload.id);
-          } catch (err: any) {
-            console.error(`Error browsing favorite: ${err.message}`);
-          }
+      case 'browseFavorite': {
+        const objectId = payload?.objectId || payload?.id;
+        const speakerIP = payload?.speakerIP;
+        if (!objectId || !speakerIP) {
+          console.warn('[browseFavorite] Missing objectId or speakerIP.');
+          break;
+        }
+        try {
+          await sonos.browseFavorite(objectId, speakerIP);
+        } catch (err: any) {
+          console.error(`Error browsing favorite: ${err.message}`);
         }
         break;
+      }
 
       case 'volume':
         if (payload?.speakerUUIDs) {

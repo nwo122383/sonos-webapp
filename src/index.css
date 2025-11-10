@@ -1,36 +1,76 @@
-/* src/index.css — fixed dark theme */
+/* src/index.css — theme-aware */
+
+:root {
+  --bg: #0e0e0e;
+  --text: #eaeaea;
+  --muted: #bcbcbc;
+  --card: #161616;
+  --card-secondary: #1f1f1f;
+  --border: #2a2a2a;
+  --accent: #008cba;
+  --accent-contrast: #ffffff;
+  --shadow: rgba(0, 0, 0, 0.35);
+  --progress-track: #1d1d1d;
+  --progress-fill: linear-gradient(90deg, #0bd2ff, #6fe87a);
+  --volume-bar-bg: #333;
+  --volume-bar-fill: limegreen;
+}
+
+body.theme-light {
+  --bg: #f7f8f9;
+  --text: #111111;
+  --muted: #555555;
+  --card: #ffffff;
+  --card-secondary: #f2f4f7;
+  --border: #d7d9df;
+  --accent: #0060df;
+  --accent-contrast: #ffffff;
+  --shadow: rgba(0, 0, 0, 0.12);
+  --progress-track: #e1e5ea;
+  --progress-fill: linear-gradient(90deg, #0b7dff, #00b894);
+  --volume-bar-bg: #e1e5ea;
+  --volume-bar-fill: #00a862;
+}
+
+body.theme-dark {
+  --bg: #0e0e0e;
+  --text: #eaeaea;
+}
+
 html, body, #root {
   height: 100%;
 }
 
 body {
   margin: 0;
-  background: #0e0e0e;  /* dark */
-  color: #eaeaea;       /* light text */
+  background: var(--bg);
+  color: var(--text);
   font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+  transition: background 0.25s ease, color 0.25s ease;
 }
 
 .app-root {
   display: grid;
   gap: 12px;
   padding: 12px;
-  background: #0e0e0e;
-  color: #eaeaea;
+  background: var(--bg);
+  color: var(--text);
 }
 
 .controls-section {
   display: grid;
   gap: 12px;
-  background: #161616;
-  border: 1px solid #2a2a2a;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px;
+  box-shadow: 0 20px 50px var(--shadow);
 }
 
-/* make sure favorites text stays readable in dark */
+/* keep favorites legible in either theme */
 .favorites-section,
 #favorites-container,
 #favorites-container h2 {
-  color: #eaeaea;
+  color: var(--text);
   background: transparent;
 }

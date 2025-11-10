@@ -1,74 +1,138 @@
-/* src/components/NowPlaying.css */
-/* Enlarged widget */
-
-.np {
+/* Bigger widget */
+.nowplaying {
   display: grid;
-  grid-template-columns: 84px 1fr auto; /* was 72px */
-  gap: 14px;                             /* + */
+  grid-template-columns: 180px 1fr auto; /* art, meta, controls */
   align-items: center;
-  padding: 12px 14px;                    /* + */
-  border-radius: 12px;                   /* + */
-  background: #111;
-  color: #fff;
+  gap: 24px;
+  padding: 24px 24px;
+  border-radius: 18px;
+  background: var(--card);
+  color: var(--text);
+  min-height: 200px;
+  box-shadow: 0 25px 90px var(--shadow);
 }
 
-/* Art */
-.np__art {
-  width: 84px;                           /* + */
-  height: 84px;                          /* + */
-  border-radius: 12px;                   /* + */
+/* Shift controls closer to the right edge than last time,
+   but still keep a safe gutter for the wheel overlap.
+   Increase or decrease this number to move buttons right/left. */
+.np-safe-right {
+  padding-right: 40px;
+}
+
+/* Album art */
+.nowplaying__art {
+  width: 180px;
+  height: 180px;
+  border-radius: 16px;
   overflow: hidden;
-  border: 1px solid #333;
-  background: #222;
+  background: var(--card-secondary);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 40px var(--shadow);
+}
+.nowplaying__art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.nowplaying__noart {
+  width: 100%;
+  height: 100%;
   display: grid;
   place-items: center;
+  color: #999;
+  font-size: 13px;
 }
-.np__art img { width: 100%; height: 100%; object-fit: cover; }
-.np__noart { font-size: 12px; opacity: 0.7; }
 
-/* Center text column */
-.np__center { min-width: 0; }
-.np__line1 {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+/* Text sizes */
+.nowplaying__meta {
+  display: grid;
+  align-content: center;
+  gap: 14px;
 }
-.np__title {
-  font-size: 18px;                       /* + */
-  font-weight: 800;                      /* + */
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.nowplaying__title {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.np__metaRight {
-  display: flex; gap: 10px; align-items: center;
-  font-size: 13px;                       /* + */
-  opacity: 0.9;
-}
-.np__dot { opacity: 0.6; }
-.np__artist {
-  margin-top: 4px;
-  font-size: 14px;                       /* + */
-  opacity: 0.9;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.nowplaying__artist {
+  font-size: 18px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Progress */
-.np__progress { margin-top: 8px; }       /* + */
-.np__bar {
-  width: 100%; height: 8px;              /* + */
-  background: #2a2a2a; border-radius: 999px; overflow: hidden;
+.nowplaying__progress {
+  display: grid;
+  gap: 10px;
 }
-.np__barFill { height: 100%; width: 0%; background: #19c37d; transition: width 0.25s linear; }
-.np__time { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; opacity: 0.8; }
+.nowplaying__bar {
+  height: 14px;
+  background: var(--progress-track);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.nowplaying__barFill {
+  height: 100%;
+  width: 0%;
+  background: var(--progress-fill);
+  transition: width 0.25s ease-out;
+}
+.nowplaying__time {
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  color: var(--muted);
+}
 
-/* Controls */
-.np__controls { display: flex; gap: 10px; }
-.np__btn {
-  min-width: 42px; height: 42px;         /* + */
-  border-radius: 12px;                   /* + */
-  border: 1px solid #333; background: #222; color: #fff;
-  font-size: 18px; line-height: 1; cursor: pointer;
+/* Controls cluster */
+.nowplaying__controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transform: translateX(0);
 }
-.np__btn--active { background: #2e7d32; }
-.np__vol { white-space: nowrap; }
-.np__speaker { white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }  /* + */
+
+/* Larger tap targets */
+.nowplaying__btn {
+  min-width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--card-secondary);
+  color: var(--text);
+  font-size: 26px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 12px 30px var(--shadow);
+}
+.nowplaying__btn:active {
+  transform: translateY(1px);
+}
+.nowplaying__btn--primary {
+  background: var(--card);
+  border-color: var(--border);
+}
+
+/* Volume readout */
+.nowplaying__volreadout {
+  font-size: 22px;
+  font-weight: 800;
+  min-width: 58px;
+  text-align: right;
+  color: var(--text);
+  margin-right: 4px;
+}
+
+/* Small spacer so the very-right edge never overlaps a button */
+.nowplaying__spacer {
+  width: 8px;
+  height: 1px;
+}

@@ -1,7 +1,7 @@
 // ===============================
 // src/App.tsx
 // ===============================
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Favorites from './components/Favorites';
 import VolumeBar from './components/VolumeBar';
 import VolumeControl from './components/VolumeControl';
@@ -10,20 +10,41 @@ import ToastCenter from './components/ToastCenter';
 import { DeskThing } from '@deskthing/client';
 import type { SocketData } from '@deskthing/types';
 import './index.css';
+import { SettingsContext } from './contexts/SettingsContext';
 
 const clamp = (v: number, min = 0, max = 100) => Math.min(max, Math.max(min, v));
 
 const App: React.FC = () => {
+  const { settings } = useContext(SettingsContext);
   const [currentVolume, setCurrentVolume] = useState<number>(50);
   const [volumeBarVisible, setVolumeBarVisible] = useState<boolean>(false);
   const [selectedVolumeSpeakers, setSelectedVolumeSpeakers] = useState<string[]>([]);
   const hideTimerRef = useRef<number | null>(null);
 
-  const bounceVolumeBar = () => {
+  const parsedVolumeTimeout = Number(settings?.volume_bar_timeout);
+  const volumeBarDuration = Number.isFinite(parsedVolumeTimeout)
+    ? Math.max(0, parsedVolumeTimeout)
+    : 2000;
+  const parsedScrollDelta = Number(settings?.volume_scroll_delta);
+  const scrollDelta = Number.isFinite(parsedScrollDelta)
+    ? Math.max(1, Math.round(parsedScrollDelta))
+    : 1;
+
+  const bounceVolumeBar = useCallback(() => {
     setVolumeBarVisible(true);
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = window.setTimeout(() => setVolumeBarVisible(false), 2000);
-  };
+    hideTimerRef.current = window.setTimeout(() => setVolumeBarVisible(false), volumeBarDuration);
+  }, [volumeBarDuration]);
+
+  useEffect(() => {
+    const isDark = settings?.dark_mode !== false;
+    const body = document.body;
+    body.classList.remove('theme-dark', 'theme-light');
+    body.classList.add(isDark ? 'theme-dark' : 'theme-light');
+    return () => {
+      body.classList.remove('theme-dark', 'theme-light');
+    };
+  }, [settings?.dark_mode]);
 
   // Subscribe to volume selection + live volume events
   useEffect(() => {
@@ -45,12 +66,15 @@ const App: React.FC = () => {
     });
 
     return () => { try { offSelVol?.(); offVol?.(); } catch {} };
-  }, []);
+  }, [bounceVolumeBar]);
 
   // Wheel → adjustVolume with explicit speakerUUIDs (decoupled from favorites)
   useEffect(() => {
     const handleWheel = (event: WheelEvent) => {
-      const delta = event.deltaX < 0 ? -1 : 1;
+      const dominant =
+        Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+      if (dominant === 0) return;
+      const delta = dominant > 0 ? scrollDelta : -scrollDelta;
       if (selectedVolumeSpeakers.length > 0) {
         DeskThing.send({
           app: 'sonos-webapp',
@@ -64,7 +88,7 @@ const App: React.FC = () => {
     };
     window.addEventListener('wheel', handleWheel, { passive: false });
     return () => window.removeEventListener('wheel', handleWheel);
-  }, [selectedVolumeSpeakers]);
+  }, [selectedVolumeSpeakers, scrollDelta, bounceVolumeBar]);
 
   return (
     <div className="app-root">

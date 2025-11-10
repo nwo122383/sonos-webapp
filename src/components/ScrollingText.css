@@ -1,21 +1,26 @@
 .scrolling-text-container {
-    position: relative;
-    overflow: hidden;
-    white-space: nowrap;
-    width: 100%;
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.scrolling-text-content {
+  display: inline-block;
+  animation: scroll 24s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes scroll {
+  0%,
+  70% {
+    transform: translateX(0); /* stay still most of the cycle */
   }
-  
-  .scrolling-text-content {
-    display: inline-block;
-    animation: scroll 10s linear infinite;
+  85% {
+    transform: translateX(-100%); /* brief sweep to reveal the end */
   }
-  
-  @keyframes scroll {
-    0% {
-      transform: translateX(100%);
-    }
-    100% {
-      transform: translateX(-100%);
-    }
+  100% {
+    transform: translateX(0); /* snap back to start */
   }
+}
   

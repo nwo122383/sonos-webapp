@@ -13,6 +13,10 @@ if (!rootEl) {
   document.body.appendChild(el);
 }
 
+if (!document.body.classList.contains('theme-dark') && !document.body.classList.contains('theme-light')) {
+  document.body.classList.add('theme-dark');
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>

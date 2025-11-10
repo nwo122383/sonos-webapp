@@ -3,7 +3,7 @@
 .vc-root {
   display: grid;
   gap: 10px;
-  color: #eaeaea; /* dark UI assumed */
+  color: var(--text);
 }
 
 .vc-header {
@@ -29,25 +29,25 @@
   font-size: 14px;
   cursor: pointer;
   border-radius: 6px;
-  border: 1px solid #2a2a2a;
-  background: #008cba;
-  color: #fff;
+  border: 1px solid var(--border);
+  background: var(--accent);
+  color: var(--accent-contrast);
   transition: filter 120ms ease-in-out, transform 60ms ease-in-out;
 }
 .vc-chip:hover { filter: brightness(1.06); }
 .vc-chip:active { transform: scale(0.98); }
 
 .vc-chip--selected {
-  background: #00000039;
-  color: rgba(255, 255, 255, 0.95);
-  border-color: #3d3d3d;
+  background: var(--card-secondary);
+  color: var(--text);
+  border-color: var(--border);
 }
 
 .vc-chip--all {
-  background: #008cba;
+  background: var(--accent);
 }
 .vc-chip--all-selected {
-  background: #222;
+  background: var(--card-secondary);
 }
 
 /* Controls row */
@@ -62,9 +62,9 @@
   font-size: 16px;
   cursor: pointer;
   border-radius: 6px;
-  background: #1f1f1f;
-  color: #eaeaea;
-  border: 1px solid #2a2a2a;
+  background: var(--card-secondary);
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 .vc-btn:hover { filter: brightness(1.06); }
 .vc-btn:active { transform: scale(0.98); }

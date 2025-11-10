@@ -62,7 +62,7 @@ async function postSoapRaw(
   soapAction: string,
   envelope: string
 ): Promise<string> {
-  const url = `http://${speakerIP}:1400${path}`;
+  const url = `http://${speakerIP}:1400/MediaServer${path}`;
   const headers = {
     "Content-Type": "text/xml; charset=utf-8",
     "SOAPACTION": soapAction,
@@ -103,6 +103,14 @@ export function extractObjectIdFromMeta(metaData?: string): string | null {
     if (innerMatch?.[1]) return innerMatch[1];
   }
 
+  // Fallback: use the DIDL item/container id attribute
+  const itemMatch = metaData.match(/<(?:item|container)\s+[^>]*id="([^"]+)"/i);
+  if (itemMatch?.[1]) return itemMatch[1];
+
+  const unescapedItem = metaData.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  const escapedItemMatch = unescapedItem.match(/<(?:item|container)\s+[^>]*id="([^"]+)"/i);
+  if (escapedItemMatch?.[1]) return escapedItemMatch[1];
+
   return null;
 }
 
@@ -121,11 +129,20 @@ function isEncoded(id: string): boolean {
 /** Normalize objectId so ContentDirectory:Browse accepts it. */
 export function normalizeObjectIdForBrowse(objectId: string): string {
   if (!objectId) return objectId;
-  // If no percent-escapes, minimally encode ':' which is the common culprit.
-  if (!isEncoded(objectId)) {
-    return objectId.replace(/:/g, "%3A");
+  let candidate = objectId;
+  try {
+    const decoded = decodeURIComponent(objectId);
+    if (decoded) candidate = decoded;
+  } catch {
+    /* keep original */
   }
-  return objectId;
+  return candidate;
+}
+
+function buildSoapObjectId(objectIdRaw: string, normalized: string): string {
+  const hasEncoding = /%[0-9A-Fa-f]{2}/.test(objectIdRaw);
+  if (hasEncoding) return objectIdRaw;
+  return encodeURIComponent(normalized);
 }
 
 /** Parse DIDL-Lite string into items. */
@@ -185,10 +202,11 @@ export async function browseFavoriteSmart(
   };
 
   const objectId = normalizeObjectIdForBrowse(objectIdRaw);
+  const soapObjectId = buildSoapObjectId(objectIdRaw, objectId);
   emit("input", { objectIdRaw, objectId, metaPresent: !!metaData });
 
   const body = `
-    <ObjectID>${objectId}</ObjectID>
+    <ObjectID>${soapObjectId}</ObjectID>
     <BrowseFlag>BrowseDirectChildren</BrowseFlag>
     <Filter>*</Filter>
     <StartingIndex>0</StartingIndex>

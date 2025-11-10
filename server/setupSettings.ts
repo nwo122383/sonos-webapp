@@ -11,14 +11,14 @@ export const setupSettings = async () => {
       label: 'Sonos IP Address',
       description: 'The IP address of your Sonos speaker or group coordinator.',
       type: SETTING_TYPES.STRING,
-      value: '192.168.5.246',
+      value: '192.168.5.253',
     },
     dark_mode: {
       id: 'dark_mode',
       label: 'Dark Mode',
       description: 'Enable dark mode UI (black background, white text)',
       type: SETTING_TYPES.BOOLEAN,
-      value: false,
+      value: true,
     },
     volume_scroll_delta: {
       id: 'volume_scroll_delta',

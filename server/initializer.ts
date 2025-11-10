@@ -13,7 +13,6 @@ import { setupActions } from './setupActions';
 import { setupGetters } from './setupGetters';
 import { setupTasks } from './setupTasks';
 import { setupGlobalVolume } from './globalVolume';
-import { playLatestFromFavorite } from "./playLatestFromFavorite";
 import { createDeskThing, DeskThingClass } from '@deskthing/server';
 
 

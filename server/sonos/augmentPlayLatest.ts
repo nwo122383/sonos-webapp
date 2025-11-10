@@ -5,7 +5,8 @@
 
 import axios from 'axios';
 import xml2js from 'xml2js';
-import sonos from '.'; // IMPORTANT: this must import the same instance used elsewhere
+import { normalizeObjectIdForBrowse } from '../browseSmart';
+import sonos from '../sonos'; // IMPORTANT: import the shared instance, not the class definition
 
 type SonosLike = {
   sendLog: (m: string) => void;
@@ -13,15 +14,28 @@ type SonosLike = {
   playFavoriteOnSpeakers: (uri: string, uuids: string[], metaData?: string) => Promise<void>;
 };
 
+function resolveSoapObjectId(objectId: string) {
+  const normalized = normalizeObjectIdForBrowse(objectId);
+  const favs = Array.isArray((sonos as any).favoritesList) ? (sonos as any).favoritesList : [];
+  const candidate = favs.find((fav: any) => {
+    const ids = [fav?.objectId, fav?.browseId, fav?.id, fav?.rawObjectId].filter(Boolean);
+    return ids.includes(objectId) || ids.includes(normalized);
+  });
+  const raw = candidate?.rawObjectId;
+  if (raw) return raw;
+  return /%[0-9A-Fa-f]{2}/.test(objectId) ? objectId : encodeURIComponent(normalized);
+}
+
 async function playLatestFromFavoriteImpl(
   this: SonosLike,
   objectId: string,
   speakerIP: string,
   speakerUUIDs: string[]
 ) {
+  const soapObjectId = resolveSoapObjectId(objectId);
   const soapBody = `
     <u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
-      <ObjectID>${objectId}</ObjectID>
+      <ObjectID>${soapObjectId}</ObjectID>
       <BrowseFlag>BrowseDirectChildren</BrowseFlag>
       <Filter>*</Filter>
       <StartingIndex>0</StartingIndex>
@@ -36,7 +50,7 @@ async function playLatestFromFavoriteImpl(
   };
 
   try {
-    this.sendLog(`[augmentPlayLatest] Browsing children of ${objectId} on ${speakerIP}`);
+    this.sendLog(`[augmentPlayLatest] Browsing children of ${objectId} (soap: ${soapObjectId}) on ${speakerIP}`);
 
     const resp = await axios.post(
       url,

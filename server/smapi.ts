@@ -154,8 +154,8 @@ async function parseSmapiGetMetadataResponse(ip: string, xml: string, rawMeta: s
  * @param objectId  - the content id, e.g. "10fe2064show%3Aabc...". MUST be already percent-encoded; do NOT decode.
  * @param metaData  - DIDL that includes the <desc> with service id ("Svc####")
  */
-export async function browseSmapi(params: { speakerIP: string; objectId: string; metaData?: string }): Promise<FavoriteItem[]> {
-  const { speakerIP, objectId, metaData = '' } = params;
+export async function browseSmapi(params: { speakerIP: string; objectId: string; metaData?: string; accountId?: string | null }): Promise<FavoriteItem[]> {
+  const { speakerIP, objectId, metaData = '', accountId } = params;
 
   const serviceId = extractServiceIdFromMeta(metaData);
   if (!serviceId) {
@@ -165,12 +165,14 @@ export async function browseSmapi(params: { speakerIP: string; objectId: string;
 
   const soapAction = 'urn:schemas-upnp-org:service:MusicServices:1#X_GetMetadata'; // wrapper action used by Sonos
   // Many stacks accept getMetadata with music services wrapper; if needed, fallback to Services/1.1
+  const accountFragment = accountId ? `<AccountId>${accountId}</AccountId>` : '';
   const body = `
 <u:X_GetMetadata xmlns:u="urn:schemas-upnp-org:service:MusicServices:1">
   <Id>${serviceId}</Id>
   <Index>0</Index>
   <Count>100</Count>
   <Recursive>false</Recursive>
+  ${accountFragment}
   <Uri>${escapeXml(objectId)}</Uri>
   <RequestedCount>100</RequestedCount>
 </u:X_GetMetadata>`.trim();
