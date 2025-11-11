@@ -2,10 +2,13 @@
  webapp for deskthing for sonos 
  So this is going to be an app specifically for the spotify carthing, which is now the deskthing. 
  This uses the IP address of the speaker, so make sure you have that ready. 
- This will display your favorites on the screen and allow you to play them, i have tested SiriusXM stations and Tunein with success. 
- Also, if you have songs favorited with youtube music they will play, at this time, playlists, albums, and stations with youtube music do not work, i dont use a lot of other streaming media so havent tested others. 
- this also shows the now playing album art and track info on the screen and you can control the volume. 
- If anyone wants to use it will be an alpha/early beta i guess.
+ This will display your favorites on the screen and allow you to play them, i have tested SiriusXM stations, YouTube Music, sonos radio, amazon music, and  and Tunein with success i believe most other streams will work. 
+
+ --- One thing to keep in mind that does not work; shows/podcasts if you have a SiriusXM show or a podcast throguh pocketcasts or another provider as a favorite, it will show up in the list but you will not be able to play it, i have spent countless hours trying to figure this out but the way i am doing this with just the IP address of the speaker it does not seem that sonos exposes the episodes/podcasts
+ so if sonos eventually allows this i will revisit this -----
+ 
+This also shows the now playing album art and track info on the screen and you can control the volume with the scroll wheel on the carthing 
+If anyone wants to use it will be an alpha/early beta i guess.
 
 dark 
 
