@@ -7,8 +7,12 @@
 
 .scrolling-text-content {
   display: inline-block;
-  animation: scroll 24s ease-in-out infinite;
+  animation: scroll var(--scroll-duration, 24s) ease-in-out infinite;
   will-change: transform;
+}
+
+.scrolling-text-content--static {
+  animation: none !important;
 }
 
 @keyframes scroll {

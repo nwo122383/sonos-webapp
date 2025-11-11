@@ -1,9 +1,10 @@
 // src/components/NowPlaying.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { DeskThing } from '@deskthing/client';
 import type { SocketData } from '@deskthing/types';
 import './NowPlaying.css';
 import { ScrollingText } from './ScrollingText';
+import { SettingsContext } from '../contexts/SettingsContext';
 
 type NowPlayingWire = {
   title?: string;
@@ -50,6 +51,7 @@ function makeTrackKey(p: Partial<NowPlayingWire>): string {
 }
 
 const NowPlaying: React.FC<Props> = ({ selectedSpeakerUUIDs, currentVolume, onLocalVolumeChange }) => {
+  const { settings } = useContext(SettingsContext);
   // Canonical “what’s playing”
   const [title, setTitle] = useState<string>('');
   const [artist, setArtist] = useState<string>('');
@@ -188,19 +190,22 @@ const NowPlaying: React.FC<Props> = ({ selectedSpeakerUUIDs, currentVolume, onLo
   const rightTime = duration > 0 ? toClock(duration) : '—';
   const showProgress = duration > 0;
 
+  const marqueeInterval = Number(settings?.marquee_interval_ms);
+  const scrollInterval = Number.isFinite(marqueeInterval) ? marqueeInterval : 30000;
+
   return (
     <div className="nowplaying">
       <div className="nowplaying__art">
         {albumArt ? (
           <img src={albumArt} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
-          <span style={{ fontSize: 11, color: '#888', textAlign: 'center', padding: 4 }}>No Art</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', padding: 4 }}>No Art</span>
         )}
       </div>
 
       <div className="nowplaying__meta">
         <div className="nowplaying__title" title={title || ''}>
-          <ScrollingText text={title || '—'} fadeWidth={40} />
+          <ScrollingText text={title || '—'} fadeWidth={40} intervalMs={scrollInterval} />
         </div>
         <div
           className="nowplaying__artist"
@@ -209,6 +214,7 @@ const NowPlaying: React.FC<Props> = ({ selectedSpeakerUUIDs, currentVolume, onLo
           <ScrollingText
             text={`${artist || 'Unknown Artist'}${album ? ` • ${album}` : ''}`}
             fadeWidth={40}
+            intervalMs={scrollInterval}
           />
         </div>
 

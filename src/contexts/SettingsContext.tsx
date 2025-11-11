@@ -37,6 +37,7 @@ const normalizeSettings = (s: Record<string, any>) => {
     dark_mode: toBoolean(rawDark, true),
     volume_scroll_delta: toNumber(valueOf(s?.volume_scroll_delta, 1), 1),
     volume_bar_timeout: toNumber(valueOf(s?.volume_bar_timeout, 5000), 5000),
+    marquee_interval_ms: toNumber(valueOf(s?.marquee_interval_ms, 30000), 30000),
   };
 };
 

@@ -34,6 +34,13 @@ export const setupSettings = async () => {
       type: SETTING_TYPES.NUMBER,
       value: 5000,
     },
+    marquee_interval_ms: {
+      id: 'marquee_interval_ms',
+      label: 'Marquee Interval (ms)',
+      description: 'Delay between scrolling cycles for titles/artist text (0 disables scrolling).',
+      type: SETTING_TYPES.NUMBER,
+      value: 30000,
+    },
   };
 
   DeskThing.initSettings(settings);
