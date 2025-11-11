@@ -7,3 +7,12 @@
  this also shows the now playing album art and track info on the screen and you can control the volume. 
  If anyone wants to use it will be an alpha/early beta i guess.
 
+dark 
+
+<img width="809" height="469" alt="image" src="https://github.com/user-attachments/assets/7953cbbe-1033-4d7d-bdf9-95bee6d39d8b" />
+
+light
+
+<img width="805" height="456" alt="image" src="https://github.com/user-attachments/assets/e3a79a1b-d636-46de-90f4-597ab31897d7" />
+
+
